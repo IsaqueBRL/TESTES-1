@@ -1,0 +1,2867 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Vendas - Mobile</title>
+<style>
+    :root {
+        --purple: #9b59b6;
+        --purple-dark: #7d3c98;
+        --green: #2ecc71;
+        --green-dark: #219150;
+        --orange: #e67e22;
+        --red: #e74c3c;
+        --text-strong: #0f172a;
+        --text-body: #1e293b;
+        --text-muted: #64748b;
+        --border-soft: #e2e8f0;
+        --bg-page: #f4f7f6;
+        --bg-surface: #ffffff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; }
+    html, body { background: var(--bg-page); color: var(--text-body); height: 100%; }
+    body { padding-bottom: 90px; }
+
+    /* ===== BARRA LATERAL ESQUERDA (VENDAS / ESTOQUE) =====
+       Agora é um painel que desliza por cima do conteúdo (não empurra mais nada pra direita).
+       Fica escondida por padrão e abre com o botão ☰ no cabeçalho. */
+    .side-nav {
+        position: fixed; left: 0; top: 0; bottom: 0; width: 64px; background: #1a2333;
+        display: flex; flex-direction: column; align-items: stretch; padding-top: 10px; z-index: 310;
+        transform: translateX(-100%); transition: transform .25s ease;
+        box-shadow: 4px 0 18px rgba(0,0,0,0.3);
+    }
+    .side-nav.open { transform: translateX(0); }
+    .side-nav-backdrop {
+        position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 305; display: none;
+    }
+    .side-nav-backdrop.show { display: block; }
+    .btn-menu { background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.3); }
+    .btn-menu:active { background: rgba(255,255,255,0.3); }
+    .side-nav-btn {
+        width: 100%; background: none; border: none; border-left: 3px solid transparent; color: #8b96ad;
+        padding: 14px 2px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+        font-size: 7.8pt; font-weight: 700;
+    }
+    .side-nav-btn svg { width: 21px; height: 21px; fill: currentColor; }
+    .side-nav-btn.ativo { color: #fff; background: rgba(255,255,255,0.06); border-left-color: var(--purple); }
+
+    header {
+        position: sticky; top: 0; z-index: 20;
+        background: var(--purple); color: #fff;
+        padding: 16px 16px 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+    .header-row { display: flex; align-items: center; gap: 12px; }
+    .header-titles { flex: 1; min-width: 0; }
+    header h1 { font-size: 16pt; }
+    header p { font-size: 9pt; opacity: 0.9; margin-top: 2px; }
+
+    .container { padding: 14px; max-width: 520px; margin: 0 auto; }
+
+    /* ===== FILTROS DE STATUS ===== */
+    .filtros { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px; }
+    .filtro-btn {
+        flex-shrink: 0; border: none; padding: 8px 14px; border-radius: 20px;
+        font-size: 9pt; font-weight: 700; background: #e2e8f0; color: var(--text-muted);
+        opacity: 0.55; white-space: nowrap;
+    }
+    .filtro-btn.ativo { opacity: 1; }
+    .filtro-btn[data-status="RASCUNHO"].ativo { background: #e2e8f0; color: var(--text-strong); }
+    .filtro-btn[data-status="CONFIRMADA"].ativo { background: #feebc8; color: #9c4221; }
+    .filtro-btn[data-status="PAGO"].ativo { background: #c6f6d5; color: #22543d; }
+    .filtro-btn[data-status="TODOS"] { background: #2c3e50; color: #fff; opacity: 0.55; }
+    .filtro-btn[data-status="TODOS"].ativo { opacity: 1; }
+    .filtro-btn[data-status="ZERADOS"] { background: #e2e8f0; color: var(--text-muted); }
+    .filtro-btn[data-status="ZERADOS"].ativo { background: #e9d8fd; color: #553c9a; opacity: 1; }
+
+    /* ===== CARDS DE VENDA (SUBSTITUEM A TABELA NO MOBILE) ===== */
+    .venda-card {
+        background: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px;
+        padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .venda-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .venda-cliente { font-weight: 700; font-size: 11pt; color: var(--text-strong); }
+    .venda-data { font-size: 8.5pt; color: var(--text-muted); margin-top: 2px; }
+    .badge-status { font-size: 7.5pt; font-weight: 800; padding: 3px 9px; border-radius: 10px; white-space: nowrap; }
+    .badge-status.status-rascunho { background: #e2e8f0; color: #475569; }
+    .badge-status.status-confirmada { background: #feebc8; color: #9c4221; }
+    .badge-status.status-pago { background: #c6f6d5; color: #22543d; }
+    .venda-itens { font-size: 8.5pt; color: var(--text-muted); margin-top: 8px; line-height: 1.4; }
+    .venda-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
+    .venda-total { font-weight: 800; font-size: 12pt; color: #2b6cb0; }
+    .venda-qtd { font-size: 8pt; color: var(--text-muted); }
+
+    #empty-state { text-align: center; color: var(--text-muted); padding: 40px 20px; font-size: 9.5pt; }
+
+    /* ===== FAB ===== */
+    .fab {
+        position: fixed; right: 20px; bottom: 24px; width: 58px; height: 58px; border-radius: 50%;
+        background: var(--purple); color: #fff; border: none; font-size: 24pt; line-height: 1;
+        box-shadow: 0 4px 14px rgba(155,89,182,0.5); z-index: 30;
+    }
+
+    /* ===== FORMULÁRIO ===== */
+    #form-view { display: none; }
+    .form-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .btn-voltar {
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        width: 40px; height: 40px; border-radius: 11px;
+        background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.3);
+        color: #fff; font-size: 15pt;
+    }
+    .btn-voltar:active { background: rgba(255,255,255,0.3); }
+    .card { background: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .card h2 { font-size: 11pt; color: var(--text-strong); margin-bottom: 12px; border-left: 4px solid var(--purple); padding-left: 8px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 8.5pt; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 5px; }
+    .form-group input, .form-group select {
+        width: 100%; padding: 12px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 11pt; background: #fff;
+    }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .status-selector { display: flex; gap: 6px; margin-bottom: 14px; }
+    .status-opt {
+        flex: 1; padding: 10px 4px; text-align: center; border-radius: 8px; border: 2px solid var(--border-soft);
+        background: #fff; font-size: 8.5pt; font-weight: 700; color: var(--text-muted);
+    }
+    .status-opt.sel[data-status="RASCUNHO"] { border-color: #94a3b8; background: #f1f5f9; color: #334155; }
+    .status-opt.sel[data-status="CONFIRMADA"] { border-color: #ed8936; background: #feebc8; color: #9c4221; }
+    .status-opt.sel[data-status="PAGO"] { border-color: #38a169; background: #c6f6d5; color: #22543d; }
+
+    .item-row {
+        background: #f8fafc; border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px; margin-bottom: 10px; position: relative;
+    }
+    .produto-select-btn {
+        display: block; width: 100%; padding: 14px 12px; margin-bottom: 10px; text-align: left;
+        border: 1px solid var(--border-soft); border-radius: 8px; background: #fff; font-size: 12.5pt; font-weight: 600; color: var(--text-strong);
+    }
+    .produto-select-btn.placeholder { color: var(--text-muted); font-weight: 400; }
+    .item-row-line1 { display: flex; gap: 10px; margin-bottom: 10px; }
+    .item-mini-label { font-size: 7.5pt; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; display: block; margin-bottom: 4px; }
+    .item-row-bottom { display: flex; gap: 10px; align-items: center; }
+    .item-row-bottom input { text-align: center; }
+    .item-qtd { font-size: 13pt !important; font-weight: 700; width: 100%; flex-shrink: 0; padding: 10px !important; }
+    .item-desconto-wrap { display: flex; gap: 4px; }
+    .item-desconto-val, .item-desconto-tipo {
+        border: 1px solid var(--border-soft); border-radius: 8px; background: #fff; text-align: center;
+    }
+    .item-desconto-val { padding: 10px 4px; font-size: 10.5pt; width: 100%; }
+    .item-desconto-tipo { padding: 10px 2px; font-size: 10pt; width: 54px; flex-shrink: 0; }
+    .item-subtotal { font-weight: 700; color: var(--text-strong); white-space: nowrap; font-size: 11pt; margin-left: auto; }
+    .btn-remove-item {
+        border: none; background: #fed7d7; color: #c53030; width: 34px; height: 34px; border-radius: 50%; font-size: 11pt; flex-shrink: 0;
+    }
+    .btn-add-item { width: 100%; padding: 12px; border: 2px dashed #90cdf4; background: #ebf8ff; color: #2b6cb0; border-radius: 8px; font-weight: 700; font-size: 9.5pt; }
+
+    /* ===== POPUP DE SELEÇÃO DE PRODUTO ===== */
+    .modal-overlay {
+        position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 200;
+        display: none; align-items: flex-end; justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-sheet {
+        background: #fff; width: 100%; max-width: 520px; max-height: 78vh; border-radius: 18px 18px 0 0;
+        display: flex; flex-direction: column; box-shadow: 0 -6px 24px rgba(0,0,0,0.2);
+    }
+    .modal-sheet-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border-soft); }
+    .modal-sheet-header h3 { font-size: 12.5pt; color: var(--text-strong); margin-bottom: 10px; }
+    .modal-search {
+        width: 100%; padding: 12px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 11.5pt;
+    }
+    .modal-list { overflow-y: auto; padding: 6px 0 16px; }
+    .modal-produto-cols {
+        display: flex; justify-content: space-between; align-items: center; padding: 8px 18px;
+        border-bottom: 1px solid var(--border-soft); background: #f8fafc; position: sticky; top: 0; z-index: 1;
+    }
+    .modal-produto-col-btn {
+        background: none; border: none; font-size: 8.5pt; font-weight: 800; color: var(--text-muted);
+        letter-spacing: 0.03em; text-transform: uppercase; padding: 4px 2px; display: flex; align-items: center; gap: 4px;
+        cursor: pointer;
+    }
+    .modal-produto-col-btn.ativo { color: var(--purple); }
+    .modal-produto-col-btn .arrow { font-size: 7.5pt; opacity: 0.6; }
+    .modal-produto-col-btn.ativo .arrow { opacity: 1; }
+    .modal-item {
+        padding: 15px 18px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        font-size: 12pt; font-weight: 600; color: var(--text-strong); border-bottom: 1px solid #f1f5f9;
+    }
+    .modal-item:active { background: #f8fafc; }
+    .modal-item .estoque-badge {
+        font-size: 9pt; font-weight: 700; color: var(--text-muted); background: #f1f5f9; padding: 4px 9px; border-radius: 8px; white-space: nowrap;
+    }
+    .modal-empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 10pt; }
+
+    /* ===== AUTOCOMPLETE DE CLIENTE ===== */
+    .client-autocomplete-wrapper { position: relative; }
+    .client-dropdown {
+        position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: #fff;
+        border: 1px solid var(--border-soft); border-radius: 8px; max-height: 240px; overflow-y: auto;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12); z-index: 60; display: none;
+    }
+    .client-dropdown.open { display: block; }
+    .client-dropdown-item { padding: 13px 14px; font-size: 11pt; border-bottom: 1px solid #f1f5f9; color: var(--text-strong); }
+    .client-dropdown-item:last-child { border-bottom: none; }
+    .client-dropdown-item:active { background: #f8fafc; }
+    .client-dropdown-item.create-new { color: #2b6cb0; font-weight: 700; }
+
+    .total-box { background: #f8fafc; border-radius: 10px; padding: 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .total-box span:first-child { font-size: 10pt; font-weight: 700; color: var(--text-muted); }
+    .total-box span:last-child { font-size: 15pt; font-weight: 800; color: var(--text-strong); }
+
+    .btn-salvar, .btn-excluir {
+        width: 100%; border-radius: 10px; font-weight: 700;
+        cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: rgba(0,0,0,0.12);
+        user-select: none; -webkit-user-select: none;
+    }
+    .btn-salvar { padding: 15px; background: var(--green); color: #fff; border: none; font-size: 11pt; margin-bottom: 10px; }
+    .btn-excluir { padding: 13px; background: #fff; color: var(--red); border: 2px solid var(--red); font-size: 10pt; }
+    .btn-salvar:active, .btn-excluir:active { transform: scale(0.97); }
+    .btn-salvar:disabled { opacity: 0.65; transform: none; }
+
+    /* ===== TOAST ===== */
+    #toast {
+        position: fixed; left: 50%; bottom: 100px; transform: translate(-50%, 20px); min-width: 240px; max-width: 90%;
+        background: #1a2333; color: #fff; padding: 14px 18px; border-radius: 10px; font-size: 9.5pt; text-align: center;
+        opacity: 0; transition: all .25s ease; z-index: 100; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        /* Mesmo com opacity:0 este elemento continua ocupando espaço fixo na tela (centralizado,
+           perto do rodapé) e, sem isso, ele "roubava" o clique de tudo que estivesse embaixo dele
+           (ex: o meio do botão Salvar Venda) mesmo estando invisível. pointer-events:none garante
+           que o toast nunca intercepta toques, mesmo quando está aparecendo. */
+        pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+    #toast.success { background: #22543d; }
+    #toast.warning { background: #9c4221; }
+    #toast.danger { background: #822727; }
+
+    /* ===== DESTAQUE DE CAMPO INVÁLIDO (cliente não cadastrado) ===== */
+    @keyframes shake-erro {
+        10%, 90% { transform: translateX(-1px); }
+        20%, 80% { transform: translateX(2px); }
+        30%, 50%, 70% { transform: translateX(-4px); }
+        40%, 60% { transform: translateX(4px); }
+    }
+    #input-cliente.campo-invalido {
+        border: 2px solid var(--red) !important;
+        background: #fff5f5;
+        animation: shake-erro 0.5s;
+    }
+    .aviso-cliente-invalido {
+        display: none; align-items: center; gap: 6px; color: var(--red); font-size: 8.8pt; font-weight: 700;
+        margin-top: 6px; padding: 6px 8px; background: #fff5f5; border-left: 3px solid var(--red); border-radius: 4px;
+    }
+    .aviso-cliente-invalido.show { display: flex; }
+
+    /* ===== POP-UP CUSTOMIZADO DE CONFIRMAÇÃO (SUBSTITUI O confirm() NATIVO DO NAVEGADOR) ===== */
+    .app-popup-overlay {
+        position: fixed; inset: 0; background: rgba(15,23,42,0.55); z-index: 300;
+        display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .app-popup-overlay.show { display: flex; }
+    .app-popup-box {
+        background: #fff; width: 100%; max-width: 340px; border-radius: 16px; padding: 26px 22px 22px;
+        text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+    }
+    .app-popup-icon {
+        width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-size: 22pt; margin: 0 auto 14px;
+    }
+    .app-popup-icon.danger { background: #fed7d7; }
+    .app-popup-icon.warning { background: #feebc8; }
+    .app-popup-icon.info { background: #e2e8f0; }
+    .app-popup-title { font-size: 12.5pt; font-weight: 800; color: var(--text-strong); margin-bottom: 8px; }
+    .app-popup-message { font-size: 10pt; color: var(--text-muted); line-height: 1.5; margin-bottom: 22px; }
+    .app-popup-actions { display: flex; gap: 10px; }
+    .app-popup-btn { flex: 1; padding: 13px; border: none; border-radius: 10px; font-weight: 700; font-size: 10pt; }
+    .app-popup-btn-cancel { background: #eef2f7; color: var(--text-body); }
+    .app-popup-btn-confirm { color: #fff; }
+    .app-popup-btn-confirm.danger { background: var(--red); }
+    .app-popup-btn-confirm.warning { background: var(--orange); }
+    .app-popup-btn-confirm.info { background: var(--purple); }
+
+    /* ===== POP-UP DE CONFIRMAÇÃO DE PAGAMENTO ===== */
+    .modal-center-overlay {
+        position: fixed; inset: 0; background: rgba(15,23,42,0.55); z-index: 250;
+        display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-center-overlay.show { display: flex; }
+    .modal-center-box {
+        background: #fff; width: 100%; max-width: 420px; max-height: 88vh; overflow-y: auto;
+        border-radius: 16px; padding: 20px; box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+    }
+    .modal-center-box h3 { font-size: 13pt; color: var(--text-strong); margin-bottom: 14px; }
+    .pgto-info-box { background: #f8fafc; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 10pt; }
+    .pgto-info-row { display: flex; justify-content: space-between; }
+    .pgto-info-row + .pgto-info-row { margin-top: 6px; }
+    .pgto-info-row strong { color: var(--text-strong); }
+    .pgto-credito-valor { color: #805ad5; }
+    .pgto-checkbox-row { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 10pt; margin-bottom: 10px; }
+    .pgto-checkbox-row input[type="checkbox"] { width: 18px; height: 18px; }
+    .pgto-resumo-box { background: #f8fafc; border-radius: 10px; padding: 12px 14px; margin: 12px 0 16px; font-size: 10pt; }
+    .pgto-resumo-row { display: flex; justify-content: space-between; padding: 4px 0; }
+    .pgto-resumo-row.credito { color: #805ad5; font-weight: 700; }
+    .pgto-resumo-row.faltando { color: var(--red); font-weight: 700; }
+    .btn-confirmar-pgto { width: 100%; padding: 14px; background: var(--green); color: #fff; border: none; border-radius: 10px; font-weight: 700; font-size: 10.5pt; }
+    .btn-confirmar-pgto:disabled { opacity: 0.5; }
+
+    /* ===== AVISO DE VENDA PAGA/TRAVADA ===== */
+    #aviso-venda-paga {
+        background: #feebc8; color: #9c4221; border-radius: 10px; padding: 12px 14px;
+        font-size: 9.5pt; font-weight: 600; line-height: 1.4; margin-bottom: 14px;
+    }
+
+    /* ===== BADGE DE LOCAL DO DISPOSITIVO (cabeçalho) ===== */
+    .local-badge {
+        display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.16);
+        border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: 5px 11px;
+        font-size: 8pt; font-weight: 700; color: #fff; margin-top: 7px; max-width: 100%;
+        animation: pulseLocalBadge 2.2s ease-in-out infinite;
+    }
+    .local-badge .ponto {
+        width: 7px; height: 7px; border-radius: 50%; background: #2ecc71; flex-shrink: 0;
+        animation: pulseLocalPonto 2.2s ease-in-out infinite;
+    }
+    .local-badge span.txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* AJUSTE: piscar sutil e contínuo, para o indicador de local chamar mais atenção sem exagerar */
+    @keyframes pulseLocalBadge {
+        0%, 100% { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.3); }
+        50% { background: rgba(255,255,255,0.32); border-color: rgba(255,255,255,0.55); }
+    }
+    @keyframes pulseLocalPonto {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 rgba(46,204,113,0.6); }
+        50% { opacity: 0.45; box-shadow: 0 0 4px rgba(46,204,113,0.9); }
+    }
+
+    /* ===== MODAL: LOCAL DO DISPOSITIVO / GERENCIAR LOCAIS ===== */
+    .local-item {
+        padding: 13px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f1f5f9;
+    }
+    .local-radio {
+        width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border-soft); flex-shrink: 0;
+    }
+    .local-item.sel .local-radio { border-color: var(--green); background: var(--green); box-shadow: inset 0 0 0 3px #fff; }
+    .local-item-nome { flex: 1; font-size: 11pt; font-weight: 600; color: var(--text-strong); }
+    .local-item-nome input { width: 100%; padding: 8px; border: 1px solid var(--border-soft); border-radius: 6px; font-size: 11pt; }
+    .local-btn-icon { border: none; background: #f1f5f9; width: 32px; height: 32px; border-radius: 8px; font-size: 11pt; flex-shrink: 0; }
+    .local-add-row { padding: 14px 16px; display: flex; gap: 8px; }
+    .local-add-row input { flex: 1; padding: 10px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 10.5pt; }
+    .local-add-row button { padding: 10px 14px; border: none; border-radius: 8px; background: var(--purple); color: #fff; font-weight: 700; font-size: 10pt; flex-shrink: 0; }
+
+    /* ===== ESTOQUE POR LOCAL (dentro da aba Estoque) ===== */
+    .estoque-total-badge { font-size: 8.5pt; font-weight: 800; padding: 3px 9px; border-radius: 10px; background: #e2e8f0; color: var(--text-strong); white-space: nowrap; }
+    .estoque-locais-linha { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .estoque-local-pill { font-size: 7.8pt; font-weight: 700; background: #f1f5f9; color: var(--text-muted); padding: 3px 8px; border-radius: 8px; }
+    .estoque-ajuste-local-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
+    /* ===== TABELA DE ESTOQUE (aba Estoque, quantidade só do local escolhido) ===== */
+    .estoque-tabela-wrap { background: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .estoque-tabela { width: 100%; border-collapse: collapse; }
+    .estoque-tabela thead th {
+        text-align: left; font-size: 8.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: .3px;
+        color: var(--text-muted); background: #f8fafc; padding: 12px 14px; border-bottom: 1px solid var(--border-soft);
+        position: sticky; top: 0;
+    }
+    .estoque-tabela th.th-qtd { text-align: right; cursor: pointer; user-select: none; white-space: nowrap; }
+    .estoque-tabela th.th-qtd:active { background: #eef2f7; }
+    .estoque-tabela th.th-qtd .sort-icon { display: inline-block; margin-left: 4px; font-size: 8pt; opacity: 0.55; }
+    .estoque-tabela th.th-qtd.sort-asc .sort-icon::after { content: '▲'; }
+    .estoque-tabela th.th-qtd.sort-desc .sort-icon::after { content: '▼'; }
+    .estoque-tabela th.th-qtd:not(.sort-asc):not(.sort-desc) .sort-icon::after { content: '⇅'; }
+    .estoque-tabela th.th-qtd.sort-asc .sort-icon, .estoque-tabela th.th-qtd.sort-desc .sort-icon { opacity: 1; color: var(--purple-dark); }
+    .estoque-tabela tbody tr { border-bottom: 1px solid #f1f5f9; }
+    .estoque-tabela tbody tr:last-child { border-bottom: none; }
+    .estoque-tabela tbody tr:active { background: #f8fafc; }
+    .estoque-tabela td { padding: 13px 14px; vertical-align: middle; }
+    .estoque-td-desc { font-size: 10.5pt; font-weight: 600; color: var(--text-strong); }
+    .estoque-zerado-tag { font-size: 7.5pt; font-weight: 700; color: #c0392b; background: #fdecea; padding: 2px 6px; border-radius: 6px; margin-left: 4px; white-space: nowrap; vertical-align: middle; }
+    .estoque-td-qtd { text-align: right; font-size: 15pt; font-weight: 800; color: var(--purple-dark); white-space: nowrap; }
+    .estoque-td-qtd .unidade { font-size: 8pt; font-weight: 700; color: var(--text-muted); margin-left: 3px; }
+    .estoque-ajuste-local-nome { flex: 1; font-size: 10pt; font-weight: 600; color: var(--text-strong); }
+    .estoque-ajuste-local-row input { width: 92px; padding: 10px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 11pt; text-align: center; }
+
+    /* ===== TRANSFERÊNCIA DE ESTOQUE ===== */
+    .transfer-arrow { text-align: center; font-size: 15pt; color: var(--text-muted); margin: -2px 0 2px; }
+    .transfer-hist-card { background: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; font-size: 9.5pt; }
+    .transfer-hist-top { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--text-strong); }
+    .transfer-hist-rota { color: var(--text-muted); margin-top: 4px; }
+
+    /* ===== AJUSTE 5: FAIXA DE INDICAÇÃO "SEM CONEXÃO" (fica sticky no topo, acima do cabeçalho) ===== */
+    #conexao-offline-badge {
+        display: none; align-items: center; justify-content: center; gap: 6px;
+        background: #822727; color: #fff; font-size: 8pt; font-weight: 700;
+        padding: 8px 14px; text-align: center; position: sticky; top: 0; z-index: 400;
+    }
+
+    /* ===== AJUSTE 4: KPIs RÁPIDOS (VENDAS DE HOJE) NO TOPO DA ABA VENDAS ===== */
+    .kpi-hoje { display: flex; gap: 10px; margin-bottom: 14px; }
+    .kpi-box {
+        flex: 1; background: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px;
+        padding: 12px 10px; text-align: center;
+    }
+    .kpi-valor { display: block; font-size: 13pt; font-weight: 800; color: var(--text-strong); }
+    .kpi-label { display: block; font-size: 7.3pt; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; margin-top: 2px; }
+
+    /* ===== AJUSTE 6: SELO DE VENCIMENTO PRÓXIMO/ATRASADO NOS CARDS DE VENDA CONFIRMADA ===== */
+    .venc-badge {
+        display: inline-block; margin-top: 5px; font-size: 7.3pt; font-weight: 800;
+        padding: 2px 8px; border-radius: 8px; letter-spacing: .2px;
+    }
+    .venc-badge.venc-atrasada { background: #fed7d7; color: #822727; }
+    .venc-badge.venc-hoje { background: #feebc8; color: #9c4221; }
+    .venc-badge.venc-proxima { background: #feebc8; color: #9c4221; opacity: .75; }
+
+    /* ===== ABA ANÁLISE (evolução de vendas, ranking e comparativo mensal) ===== */
+    .analise-kpis { display: flex; gap: 10px; margin-bottom: 14px; }
+    .analise-kpis .kpi-box { flex: 1; padding: 10px 6px; }
+    .analise-kpis .kpi-valor { font-size: 11.5pt; }
+    .analise-chart-wrap { position: relative; }
+    .analise-chart-wrap svg { width: 100%; height: 190px; display: block; }
+    #analise-chart-empty, #comparativo-chart-empty { text-align: center; color: var(--text-muted); font-size: 9pt; padding: 30px 10px; }
+    .analise-chart-tooltip {
+        position: absolute; pointer-events: none; background: #1a2333; color: #fff; padding: 6px 10px;
+        border-radius: 8px; font-size: 8.3pt; font-weight: 700; transform: translate(-50%, -115%);
+        opacity: 0; transition: opacity .1s; white-space: nowrap; z-index: 5;
+    }
+    .analise-chart-tooltip.show { opacity: 1; }
+    .comparativo-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .comparativo-col { text-align: center; flex: 1; }
+    .comparativo-valor { display: block; font-size: 12pt; font-weight: 800; color: var(--text-strong); }
+    .comparativo-label { display: block; font-size: 7.5pt; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+    .comparativo-pct { text-align: center; font-size: 13pt; font-weight: 800; margin: 6px 0 2px; }
+    .comparativo-diff { text-align: center; font-size: 8.5pt; color: var(--text-muted); }
+    .ranking-item {
+        display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-soft);
+    }
+    .ranking-item:last-child { border-bottom: none; }
+    .ranking-pos {
+        flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: #f1f5f9; color: var(--text-muted);
+        font-size: 8.5pt; font-weight: 800; display: flex; align-items: center; justify-content: center;
+    }
+    .ranking-item:nth-child(1) .ranking-pos { background: #fef3c7; color: #92400e; }
+    .ranking-item:nth-child(2) .ranking-pos { background: #e2e8f0; color: #334155; }
+    .ranking-item:nth-child(3) .ranking-pos { background: #fed7aa; color: #9a3412; }
+    .ranking-info { flex: 1; min-width: 0; }
+    .ranking-nome { font-size: 9.5pt; font-weight: 700; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ranking-qtd { font-size: 8pt; color: var(--text-muted); margin-top: 1px; }
+    .ranking-valor { flex-shrink: 0; font-size: 9.5pt; font-weight: 800; color: #2b6cb0; }
+    #ranking-vazio { text-align: center; color: var(--text-muted); font-size: 9pt; padding: 20px 10px; }
+
+</style>
+</head>
+<body>
+
+<div id="conexao-offline-badge"><span>📡</span> Sem conexão — as alterações serão sincronizadas ao reconectar</div>
+
+<div class="side-nav" id="side-nav">
+    <button type="button" class="side-nav-btn ativo" id="nav-btn-vendas" data-view="vendas">
+        <svg viewBox="0 0 24 24"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12L8.1 13h7.45c.75 0 1.41-.41 1.75-1.03L21.7 6.5c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>
+        <span>Vendas</span>
+    </button>
+    <button type="button" class="side-nav-btn" id="nav-btn-estoque" data-view="estoque">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L18.82 8 12 11.82 5.18 8 12 4.18zM4 9.06l7 3.5v7.38l-7-3.5V9.06zm9 10.88v-7.38l7-3.5v7.38l-7 3.5z"/></svg>
+        <span>Estoque</span>
+    </button>
+    <button type="button" class="side-nav-btn" id="nav-btn-transferencia" data-view="transferencia">
+        <svg viewBox="0 0 24 24"><path d="M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L10 9l3.99 4z"/></svg>
+        <span>Transferir</span>
+    </button>
+    <button type="button" class="side-nav-btn" id="nav-btn-analise" data-view="analise">
+        <svg viewBox="0 0 24 24"><path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/></svg>
+        <span>Análise</span>
+    </button>
+</div>
+<div class="side-nav-backdrop" id="side-nav-backdrop"></div>
+
+<div id="main-content">
+
+<header id="page-header">
+    <div class="header-row">
+        <button type="button" class="btn-voltar btn-menu" id="btn-toggle-sidenav" title="Menu">☰</button>
+        <button type="button" class="btn-voltar" id="btn-voltar-form" style="display:none;" title="Voltar">⬅</button>
+        <div class="header-titles">
+            <h1 id="header-title">Vendas</h1>
+            <p id="header-subtitle">Histórico e registro de vendas</p>
+            <button type="button" class="local-badge" id="btn-local-badge-vendas"><span class="ponto"></span><span class="txt" id="local-badge-txt-vendas">Selecionar local...</span></button>
+        </div>
+    </div>
+</header>
+
+<div class="container" id="vendas-container">
+
+    <!-- ===================== LISTA / HISTÓRICO ===================== -->
+    <div id="list-view">
+        <div class="kpi-hoje" id="kpi-hoje">
+            <div class="kpi-box"><span class="kpi-valor" id="kpi-hoje-total">R$ 0,00</span><span class="kpi-label">Faturado hoje</span></div>
+            <div class="kpi-box"><span class="kpi-valor" id="kpi-hoje-qtd">0</span><span class="kpi-label">Vendas hoje</span></div>
+        </div>
+        <input type="text" id="vendas-busca-cliente" class="modal-search" placeholder="🔍 Buscar por nome do cliente..." style="margin-bottom:10px;">
+        <div class="filtros" id="filtros">
+            <button class="filtro-btn ativo" data-status="RASCUNHO">Rascunho</button>
+            <button class="filtro-btn ativo" data-status="CONFIRMADA">Confirmada</button>
+            <button class="filtro-btn ativo" data-status="PAGO">Pago</button>
+            <button class="filtro-btn ativo" data-status="TODOS">Todos</button>
+        </div>
+
+        <div id="lista-vendas"></div>
+        <div id="empty-state" style="display:none;">Nenhuma venda encontrada para o(s) status selecionado(s).</div>
+    </div>
+
+    <!-- ===================== FORMULÁRIO (NOVA VENDA / EDITAR) ===================== -->
+    <div id="form-view">
+        <div id="aviso-venda-paga" style="display:none;">🔒 Esta venda já foi paga e está travada. Cliente, datas e produtos só podem ser alterados revertendo o status abaixo (ou pelo sistema no computador).</div>
+        <div class="card">
+            <div class="form-group client-autocomplete-wrapper">
+                <label>Cliente</label>
+                <input type="text" id="input-cliente" placeholder="Digite o nome do cliente" autocomplete="off">
+                <div id="client-dropdown" class="client-dropdown"></div>
+                <div id="aviso-cliente-invalido" class="aviso-cliente-invalido">⚠️ Cliente não cadastrado — selecione da lista ou toque em "Criar cliente" abaixo</div>
+            </div>
+            <div class="row-2">
+                <div class="form-group">
+                    <label>Data da venda</label>
+                    <input type="date" id="input-data-venda">
+                </div>
+                <div class="form-group">
+                    <label>Vencimento</label>
+                    <input type="date" id="input-data-vencimento">
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Status da Venda</h2>
+            <div class="status-selector" id="status-selector">
+                <button type="button" class="status-opt" data-status="RASCUNHO">Rascunho</button>
+                <button type="button" class="status-opt" data-status="CONFIRMADA">Confirmada</button>
+                <button type="button" class="status-opt" data-status="PAGO">Pago</button>
+            </div>
+            <p style="font-size:8pt; color:var(--text-muted); line-height:1.4;">Confirmada e Pago descontam do estoque automaticamente. Rascunho não reserva estoque.</p>
+        </div>
+
+        <div class="card">
+            <h2>Produtos</h2>
+            <div id="itens-container"></div>
+            <button type="button" class="btn-add-item" id="btn-add-item">➕ Adicionar produto</button>
+        </div>
+
+        <div class="total-box">
+            <span>TOTAL</span>
+            <span id="total-venda">R$ 0,00</span>
+        </div>
+
+        <button type="button" class="btn-salvar" id="btn-salvar">💾 Salvar Venda</button>
+        <button type="button" class="btn-excluir" id="btn-excluir" style="display:none;">🗑️ Excluir Venda</button>
+    </div>
+
+</div>
+
+<!-- ===================== ABA ESTOQUE ===================== -->
+<header id="estoque-header" style="display:none;">
+    <div class="header-row">
+        <button type="button" class="btn-voltar btn-menu" id="btn-toggle-sidenav-estoque" title="Menu">☰</button>
+        <div class="header-titles">
+            <h1>Estoque</h1>
+            <p>Consulta e ajuste rápido do estoque de produtos</p>
+            <button type="button" class="local-badge" id="btn-local-badge-estoque"><span class="ponto"></span><span class="txt" id="local-badge-txt-estoque">Selecionar local...</span></button>
+        </div>
+    </div>
+</header>
+<div class="container" id="estoque-container" style="display:none;">
+    <input type="text" id="estoque-busca" class="modal-search" placeholder="🔍 Buscar produto..." style="margin-bottom:10px;">
+    <div class="filtros" style="margin-bottom:14px;">
+        <button type="button" class="filtro-btn" id="btn-toggle-estoque-zerados" data-status="ZERADOS">👁️ Mostrar zerados</button>
+    </div>
+    <div class="estoque-tabela-wrap">
+        <table class="estoque-tabela">
+            <thead>
+                <tr>
+                    <th>Descrição</th>
+                    <th class="th-qtd" id="th-estoque-qtd">Quantidade<span class="sort-icon"></span></th>
+                </tr>
+            </thead>
+            <tbody id="estoque-lista"></tbody>
+        </table>
+    </div>
+    <div id="estoque-empty" style="display:none; text-align:center; color:var(--text-muted); padding:40px 20px; font-size:9.5pt;">Nenhum produto cadastrado.</div>
+</div>
+
+<!-- ===================== ABA TRANSFERÊNCIA DE ESTOQUE ===================== -->
+<header id="transferencia-header" style="display:none;">
+    <div class="header-row">
+        <button type="button" class="btn-voltar btn-menu" id="btn-toggle-sidenav-transferencia" title="Menu">☰</button>
+        <div class="header-titles">
+            <h1>Transferência</h1>
+            <p>Mover estoque entre locais</p>
+        </div>
+    </div>
+</header>
+<div class="container" id="transferencia-container" style="display:none;">
+    <div class="card">
+        <h2>Nova Transferência</h2>
+        <div class="form-group">
+            <label>Local de Origem (este aparelho)</label>
+            <select id="transfer-origem" disabled></select>
+        </div>
+        <div class="transfer-arrow">⬇</div>
+        <div class="form-group">
+            <label>Local de Destino</label>
+            <select id="transfer-destino"></select>
+        </div>
+        <div class="form-group">
+            <label>Produtos a Transferir</label>
+            <div id="transfer-itens-container"></div>
+            <button type="button" class="btn-add-item" id="btn-add-item-transferencia">➕ Adicionar produto</button>
+        </div>
+        <button type="button" class="btn-salvar" id="btn-confirmar-transferencia" style="margin-bottom:0; margin-top:14px;">🔁 Transferir Estoque</button>
+    </div>
+    <div class="card">
+        <h2>Histórico de Transferências</h2>
+        <div id="transfer-hist-lista"></div>
+        <div id="transfer-hist-empty" style="display:none; text-align:center; color:var(--text-muted); padding:20px 10px; font-size:9.5pt;">Nenhuma transferência registrada ainda.</div>
+    </div>
+</div>
+
+<!-- ===================== ABA ANÁLISE ===================== -->
+<header id="analise-header" style="display:none;">
+    <div class="header-row">
+        <button type="button" class="btn-voltar btn-menu" id="btn-toggle-sidenav-analise" title="Menu">☰</button>
+        <div class="header-titles">
+            <h1>Análise</h1>
+            <p>Vendas do local deste aparelho</p>
+        </div>
+    </div>
+</header>
+<div class="container" id="analise-container" style="display:none;">
+    <div class="filtros" id="analise-periodo-filtros">
+        <button type="button" class="filtro-btn ativo" data-periodo="7">7 dias</button>
+        <button type="button" class="filtro-btn" data-periodo="30">30 dias</button>
+        <button type="button" class="filtro-btn" data-periodo="mes">Mês atual</button>
+    </div>
+
+    <div class="analise-kpis">
+        <div class="kpi-box"><span class="kpi-valor" id="analise-kpi-faturado">R$ 0,00</span><span class="kpi-label">Faturado</span></div>
+        <div class="kpi-box"><span class="kpi-valor" id="analise-kpi-qtd">0</span><span class="kpi-label">Vendas</span></div>
+        <div class="kpi-box"><span class="kpi-valor" id="analise-kpi-ticket">R$ 0,00</span><span class="kpi-label">Ticket médio</span></div>
+    </div>
+
+    <div class="card">
+        <h2>Evolução de Vendas</h2>
+        <div class="analise-chart-wrap" id="analise-chart-wrap">
+            <svg id="analise-chart-svg" viewBox="0 0 340 190"></svg>
+            <div class="analise-chart-tooltip" id="analise-chart-tooltip"></div>
+        </div>
+        <div id="analise-chart-empty" style="display:none;">Nenhuma venda no período selecionado.</div>
+    </div>
+
+    <div class="card">
+        <h2>Mês Atual vs. Mês Anterior</h2>
+        <div class="comparativo-row">
+            <div class="comparativo-col">
+                <span class="comparativo-valor" id="comparativo-anterior">R$ 0,00</span>
+                <span class="comparativo-label" id="comparativo-anterior-nome">Mês anterior</span>
+            </div>
+            <div class="comparativo-col">
+                <span class="comparativo-valor" id="comparativo-atual">R$ 0,00</span>
+                <span class="comparativo-label" id="comparativo-atual-nome">Mês atual</span>
+            </div>
+        </div>
+        <div class="comparativo-pct" id="comparativo-pct">-</div>
+        <div class="comparativo-diff" id="comparativo-diff"></div>
+    </div>
+
+    <div class="card">
+        <h2>Produtos Mais Vendidos</h2>
+        <div id="ranking-lista"></div>
+        <div id="ranking-vazio" style="display:none;">Nenhuma venda no período selecionado.</div>
+    </div>
+</div>
+
+</div>
+
+<button class="fab" id="btn-nova-venda">＋</button>
+<div id="toast"></div>
+
+<div class="modal-overlay" id="produto-modal-overlay">
+    <div class="modal-sheet">
+        <div class="modal-sheet-header">
+            <h3>Selecione o produto</h3>
+            <input type="text" id="produto-modal-search" class="modal-search" placeholder="Buscar produto...">
+        </div>
+        <div class="modal-produto-cols">
+            <button type="button" class="modal-produto-col-btn" id="th-produto-modal-nome" data-sort="nome">PRODUTO <span class="arrow">▲▼</span></button>
+            <button type="button" class="modal-produto-col-btn ativo" id="th-produto-modal-estoque" data-sort="estoque">ESTOQUE <span class="arrow">▼</span></button>
+        </div>
+        <div class="modal-list" id="produto-modal-list"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="estoque-ajuste-overlay">
+    <div class="modal-sheet" style="max-height: 85vh;">
+        <div class="modal-sheet-header">
+            <h3 id="estoque-ajuste-nome">Ajustar Estoque</h3>
+        </div>
+        <div style="padding: 16px; overflow-y: auto;">
+            <div id="estoque-ajuste-locais-lista"></div>
+            <p style="font-size:8.3pt; color:#9c4221; background:#feebc8; border-radius:8px; padding:9px 11px; margin:12px 0 14px; font-weight:600;">⚠️ Ao alterar a quantidade e salvar, você estará fazendo um ajuste manual no estoque deste local.</p>
+            <button type="button" class="btn-salvar" id="btn-salvar-ajuste-estoque" style="margin-bottom:0;">💾 Salvar Estoque</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== MODAL: LOCAL DO DISPOSITIVO / GERENCIAR LOCAIS ===================== -->
+<div class="modal-overlay" id="local-modal-overlay">
+    <div class="modal-sheet" style="max-height: 82vh;">
+        <div class="modal-sheet-header">
+            <h3>📍 Local deste dispositivo</h3>
+            <p style="font-size:8.5pt; color:var(--text-muted); font-weight:400;">Toque num local para selecioná-lo, ou no lápis para renomear.</p>
+        </div>
+        <div class="modal-list" id="local-modal-lista"></div>
+        <div id="local-modal-empty" style="display:none; padding:20px 16px; text-align:center; color:var(--text-muted); font-size:9.5pt;">Nenhum local cadastrado ainda. Crie o primeiro abaixo.</div>
+        <div class="local-add-row">
+            <input type="text" id="local-novo-nome" placeholder="Nome do novo local (ex: Casa)">
+            <button type="button" id="btn-local-adicionar">➕ Criar</button>
+        </div>
+    </div>
+</div>
+
+<div class="app-popup-overlay" id="app-popup-overlay">
+    <div class="app-popup-box">
+        <div class="app-popup-icon" id="app-popup-icon"></div>
+        <div class="app-popup-title" id="app-popup-title"></div>
+        <div class="app-popup-message" id="app-popup-message"></div>
+        <div class="app-popup-actions">
+            <button type="button" class="app-popup-btn app-popup-btn-cancel" id="app-popup-btn-cancel">Cancelar</button>
+            <button type="button" class="app-popup-btn app-popup-btn-confirm" id="app-popup-btn-confirm">OK</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-center-overlay" id="pgto-overlay">
+    <div class="modal-center-box">
+        <h3>💰 Confirmar Pagamento da Venda</h3>
+
+        <div class="pgto-info-box">
+            <div class="pgto-info-row"><span>Total da Venda:</span> <strong id="pgto-total-venda">R$ 0,00</strong></div>
+            <div class="pgto-info-row" id="pgto-credito-row" style="display:none;">
+                <span>Crédito disponível do cliente:</span> <strong class="pgto-credito-valor" id="pgto-credito-disponivel">R$ 0,00</strong>
+            </div>
+        </div>
+
+        <div id="pgto-usar-credito-wrapper" style="display:none; margin-bottom:14px;">
+            <label class="pgto-checkbox-row">
+                <input type="checkbox" id="pgto-usar-credito-checkbox"> Usar crédito disponível do cliente
+            </label>
+            <input type="number" id="pgto-credito-usar-valor" min="0" step="0.01" placeholder="Valor de crédito a usar" style="display:none;">
+        </div>
+
+        <div class="form-group">
+            <label>Valor Pago em Dinheiro/Novo pelo Cliente (R$)</label>
+            <input type="number" id="pgto-valor-pago" min="0" step="0.01" placeholder="Ex: 12.00">
+        </div>
+
+        <div class="form-group" id="pgto-conta-wrapper" style="display:none;">
+            <label>Recebido em qual conta?</label>
+            <select id="pgto-conta-recebimento">
+                <option value="">-- Selecione a conta --</option>
+            </select>
+        </div>
+
+        <div class="pgto-resumo-box">
+            <div class="pgto-resumo-row"><span>Total Coberto (Dinheiro + Crédito):</span> <strong id="pgto-total-coberto">R$ 0,00</strong></div>
+            <div class="pgto-resumo-row credito" id="pgto-row-credito-gerado" style="display:none;">
+                <span>💳 Crédito Gerado:</span> <span id="pgto-credito-gerado">R$ 0,00</span>
+            </div>
+            <div class="pgto-resumo-row faltando" id="pgto-row-faltando" style="display:none;">
+                <span>⚠️ Falta cobrir:</span> <span id="pgto-valor-faltando">R$ 0,00</span>
+            </div>
+        </div>
+
+        <button type="button" class="btn-confirmar-pgto" id="btn-confirmar-pagamento">Confirmar Pagamento</button>
+        <button type="button" class="app-popup-btn app-popup-btn-cancel" id="btn-cancelar-pagamento" style="width:100%; margin-top:8px;">Cancelar</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, onChildAdded, onChildChanged, onChildRemoved, remove, update, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCaVDJ4LtJu-dlvSi4QrDygfhx1hBGSdDM",
+        authDomain: "banco-de-dados-invest.firebaseapp.com",
+        databaseURL: "https://banco-de-dados-invest-default-rtdb.firebaseio.com",
+        projectId: "banco-de-dados-invest",
+        storageBucket: "banco-de-dados-invest.firebasestorage.app",
+        messagingSenderId: "5603892998",
+        appId: "1:5603892998:web:459556f888d31629050887"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // ===== TOAST (substitui alert()) =====
+    let toastTimer = null;
+    function showToast(msg, type = 'info') {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = 'show ' + type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { el.className = ''; }, 3200);
+    }
+
+    // ===== POP-UP CUSTOMIZADO (SUBSTITUI O confirm()/alert() NATIVOS DO NAVEGADOR) =====
+    function customPopup({ title, message, type = 'warning', okText = 'OK', cancelText = 'Cancelar' }) {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('app-popup-overlay');
+            const iconEl = document.getElementById('app-popup-icon');
+            const titleEl = document.getElementById('app-popup-title');
+            const msgEl = document.getElementById('app-popup-message');
+            const btnOk = document.getElementById('app-popup-btn-confirm');
+            const btnCancel = document.getElementById('app-popup-btn-cancel');
+
+            const icons = { info: 'ℹ️', warning: '⚠️', danger: '🚫' };
+            iconEl.className = `app-popup-icon ${type}`;
+            iconEl.textContent = icons[type] || icons.warning;
+            titleEl.textContent = title || 'Confirmar Ação';
+            msgEl.textContent = message || '';
+            btnOk.textContent = okText;
+            btnOk.className = `app-popup-btn app-popup-btn-confirm ${type}`;
+            btnCancel.style.display = cancelText ? 'block' : 'none';
+            btnCancel.textContent = cancelText || '';
+
+            overlay.classList.add('show');
+
+            function cleanup(result) {
+                overlay.classList.remove('show');
+                btnOk.removeEventListener('click', onOk);
+                btnCancel.removeEventListener('click', onCancel);
+                overlay.removeEventListener('click', onOverlayClick);
+                resolve(result);
+            }
+            function onOk() { cleanup(true); }
+            function onCancel() { cleanup(false); }
+            function onOverlayClick(e) { if (e.target === overlay && cancelText) cleanup(false); }
+
+            btnOk.addEventListener('click', onOk);
+            btnCancel.addEventListener('click', onCancel);
+            overlay.addEventListener('click', onOverlayClick);
+        });
+    }
+    function showConfirm(message, type = 'warning', title = 'Confirmar Ação') {
+        return customPopup({ title, message, type, okText: 'Sim, Confirmar', cancelText: 'Cancelar' });
+    }
+
+    // ===== ESTADO =====
+    let allLoadedProducts = {};
+    let allLoadedClientes = {};
+    let allLoadedSales = {};
+    let allLoadedContas = {};
+    let allLoadedProductions = {}; // necessário para calcular o custo/lucro da venda (getCustoEfetivoProduto)
+
+    // ===== SINCRONIZAÇÃO INCREMENTAL (evita rebaixar a coleção inteira a cada mudança) =====
+    // Mesmo princípio usado no site do PC: onChildAdded/Changed/Removed em vez de onValue, pra não
+    // rebaixar o histórico inteiro de vendas/produções a cada mudança feita em qualquer aparelho.
+    function sincronizarColecaoIncremental(nomeNo, storeObj, onChange, delayMs = 50) {
+        let renderAgendado = false;
+        function agendarOnChange() {
+            if (renderAgendado) return;
+            renderAgendado = true;
+            setTimeout(() => { renderAgendado = false; onChange(); }, delayMs);
+        }
+        const nodeRef = ref(db, nomeNo);
+        onChildAdded(nodeRef, (snap) => { storeObj[snap.key] = snap.val(); agendarOnChange(); });
+        onChildChanged(nodeRef, (snap) => { storeObj[snap.key] = snap.val(); agendarOnChange(); });
+        onChildRemoved(nodeRef, (snap) => { delete storeObj[snap.key]; agendarOnChange(); });
+    }
+    let vendasFiltroStatus = new Set(['RASCUNHO', 'CONFIRMADA', 'PAGO']);
+    let currentSaleId = null;
+    let selectedStatus = 'RASCUNHO';
+    let selectedClienteKey = null; // chave do cliente cadastrado atualmente vinculado ao campo "Cliente"
+    let pendingPagamento = null; // { valorPago, creditoUsado, creditoGerado, clienteKey, contaKey, contaNome } - definido só após confirmar o pop-up de pagamento
+    let formularioBloqueado = false; // true quando a venda aberta já está PAGA (travada, igual ao site do PC)
+    const STATUS_INDIVIDUAIS = ['RASCUNHO', 'CONFIRMADA', 'PAGO'];
+    let vendaPendenteReenvio = false; // AJUSTE 5: true quando o último salvamento falhou por falta de conexão
+
+    // ===== ESTOQUE POR LOCAL =====
+    let allLoadedLocais = {};
+    let allLoadedTransferencias = {};
+    const LOCAL_STORAGE_KEY = 'localEstoqueDispositivo';
+    let localAtualKey = localStorage.getItem(LOCAL_STORAGE_KEY) || null;
+    let locaisJaCarregados = false; // evita abrir o modal obrigatório antes do primeiro carregamento do Firebase
+
+    function formatMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ','); }
+    function formatQuantidade(v) {
+        const n = parseFloat(v || 0);
+        return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');
+    }
+    function hojeISO() { return new Date().toISOString().split('T')[0]; }
+
+    // ===== AJUSTE 5: INDICADOR DE CONEXÃO + REENVIO AUTOMÁTICO DE VENDA QUE FALHOU POR FALTA DE INTERNET =====
+    function atualizarIndicadorConexao() {
+        const badge = document.getElementById('conexao-offline-badge');
+        if (badge) badge.style.display = navigator.onLine ? 'none' : 'flex';
+    }
+    // Quando a venda volta e o formulário de venda ainda está aberto (usuário não saiu da tela), reenvia
+    // automaticamente tocando no mesmo botão Salvar - reaproveita toda a validação/lógica de estoque e
+    // caixa já existente, em vez de duplicar essa lógica numa fila offline separada (mais seguro).
+    function tentarReenviarVendaPendente() {
+        if (!vendaPendenteReenvio) return;
+        vendaPendenteReenvio = false;
+        const btnSalvarEl = document.getElementById('btn-salvar');
+        if (document.getElementById('form-view').style.display !== 'none' && btnSalvarEl && !btnSalvarEl.disabled) {
+            showToast('Conexão restabelecida — reenviando venda...', 'info');
+            btnSalvarEl.click();
+        }
+    }
+    window.addEventListener('online', () => { atualizarIndicadorConexao(); tentarReenviarVendaPendente(); });
+    window.addEventListener('offline', atualizarIndicadorConexao);
+    atualizarIndicadorConexao();
+    // ===== FIM AJUSTE 5 =====
+
+    // ===== AJUSTE 6: DIAS PARA O VENCIMENTO DE UMA VENDA CONFIRMADA (usado no selo do card) =====
+    function diasParaVencimento(dueDateStr) {
+        if (!dueDateStr) return null;
+        const hoje = new Date(hojeISO() + 'T00:00:00');
+        const venc = new Date(dueDateStr + 'T00:00:00');
+        return Math.round((venc - hoje) / 86400000);
+    }
+    // Só mostra o selo pra vendas Confirmadas com vencimento atrasado, hoje, ou nos próximos 3 dias -
+    // vencimentos distantes não aparecem, pra não poluir a lista.
+    function vencimentoBadgeHtml(s) {
+        if ((s.status || 'PAGO') !== 'CONFIRMADA') return '';
+        const dias = diasParaVencimento(s.salesDueDate);
+        if (dias === null || dias > 3) return '';
+        if (dias < 0) return `<span class="venc-badge venc-atrasada">⚠️ Vencida há ${Math.abs(dias)}d</span>`;
+        if (dias === 0) return `<span class="venc-badge venc-hoje">⏰ Vence hoje</span>`;
+        return `<span class="venc-badge venc-proxima">Vence em ${dias}d</span>`;
+    }
+    // ===== FIM AJUSTE 6 =====
+
+    // ===== AJUSTE 4: KPIs DE VENDAS DE HOJE (TOPO DA ABA VENDAS) =====
+    function atualizarKpiHoje() {
+        const elTotal = document.getElementById('kpi-hoje-total');
+        const elQtd = document.getElementById('kpi-hoje-qtd');
+        if (!elTotal || !elQtd) return;
+        const hoje = hojeISO();
+        let total = 0, qtd = 0;
+        // AJUSTE: KPIs também consideram apenas o local escolhido neste aparelho, para bater com o
+        // histórico de vendas exibido logo abaixo.
+        Object.values(allLoadedSales).forEach(s => {
+            if (s.origemCredito) return;
+            if (s.localVendaKey !== localAtualKey) return;
+            if (s.salesDate === hoje) { total += parseFloat(s.totalValue || 0); qtd++; }
+        });
+        elTotal.textContent = formatMoeda(total);
+        elQtd.textContent = qtd;
+    }
+    // ===== FIM AJUSTE 4 =====
+
+    // ===== ABA ANÁLISE: EVOLUÇÃO DE VENDAS, RANKING E COMPARATIVO MENSAL =====
+    // Segue o mesmo princípio do resto do app: só considera vendas do local escolhido neste
+    // aparelho (localVendaKey === localAtualKey), ignora rascunhos e créditos manuais (Aba 5 do PC).
+    let analisePeriodo = '7';
+    const NOMES_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    document.querySelectorAll('#analise-periodo-filtros .filtro-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            analisePeriodo = btn.dataset.periodo;
+            document.querySelectorAll('#analise-periodo-filtros .filtro-btn').forEach(b => b.classList.toggle('ativo', b === btn));
+            renderAnalise();
+        });
+    });
+
+    function isoSomaDias(iso, dias) {
+        const d = new Date(iso + 'T00:00:00');
+        d.setDate(d.getDate() + dias);
+        return d.toISOString().split('T')[0];
+    }
+
+    function vendasValidasAnalise() {
+        // Vendas "reais" do local deste aparelho: exclui rascunho (ainda não é venda de fato)
+        // e créditos manuais lançados como venda (não representam produto vendido).
+        return Object.values(allLoadedSales).filter(s =>
+            !s.origemCredito &&
+            s.localVendaKey === localAtualKey &&
+            (s.status || 'PAGO') !== 'RASCUNHO' &&
+            s.salesDate
+        );
+    }
+
+    function renderAnalise() {
+        const semLocal = !localAtualKey || !allLoadedLocais[localAtualKey];
+        document.getElementById('analise-kpi-faturado').textContent = 'R$ 0,00';
+        document.getElementById('analise-kpi-qtd').textContent = '0';
+        document.getElementById('analise-kpi-ticket').textContent = 'R$ 0,00';
+        if (semLocal) {
+            document.getElementById('analise-chart-svg').style.display = 'none';
+            document.getElementById('analise-chart-empty').style.display = 'block';
+            document.getElementById('analise-chart-empty').textContent = 'Selecione o local deste aparelho para ver a análise dele.';
+            document.getElementById('ranking-lista').innerHTML = '';
+            document.getElementById('ranking-vazio').style.display = 'block';
+            document.getElementById('ranking-vazio').textContent = 'Selecione o local deste aparelho para ver a análise dele.';
+            document.getElementById('comparativo-pct').textContent = '-';
+            document.getElementById('comparativo-diff').textContent = '';
+            return;
+        }
+
+        const hoje = hojeISO();
+        const inicioISO = analisePeriodo === '7' ? isoSomaDias(hoje, -6)
+            : analisePeriodo === '30' ? isoSomaDias(hoje, -29)
+            : hoje.slice(0, 8) + '01'; // mês: dia 01 do mês atual
+
+        const todas = vendasValidasAnalise();
+        const doPeriodo = todas.filter(s => s.salesDate >= inicioISO && s.salesDate <= hoje);
+
+        // ----- Cards de resumo -----
+        const faturado = doPeriodo.reduce((acc, s) => acc + parseFloat(s.totalValue || 0), 0);
+        const qtdVendas = doPeriodo.length;
+        const ticketMedio = qtdVendas > 0 ? faturado / qtdVendas : 0;
+        document.getElementById('analise-kpi-faturado').textContent = formatMoeda(faturado);
+        document.getElementById('analise-kpi-qtd').textContent = qtdVendas;
+        document.getElementById('analise-kpi-ticket').textContent = formatMoeda(ticketMedio);
+
+        // ----- Gráfico de evolução (um dia por barra, dias sem venda entram com 0) -----
+        const somaPorDia = {};
+        let cursor = inicioISO;
+        while (cursor <= hoje) { somaPorDia[cursor] = 0; cursor = isoSomaDias(cursor, 1); }
+        doPeriodo.forEach(s => { somaPorDia[s.salesDate] = (somaPorDia[s.salesDate] || 0) + parseFloat(s.totalValue || 0); });
+        desenharGraficoAnalise(somaPorDia);
+
+        // ----- Ranking de produtos mais vendidos -----
+        const somaPorProduto = {};
+        doPeriodo.forEach(s => {
+            (s.items || []).forEach(item => {
+                if (!item.productKey) return;
+                if (!somaPorProduto[item.productKey]) {
+                    somaPorProduto[item.productKey] = { name: item.productName, qtd: 0, valor: 0 };
+                }
+                somaPorProduto[item.productKey].qtd += (item.quantity || 0);
+                somaPorProduto[item.productKey].valor += (item.totalItemNet != null ? item.totalItemNet : (item.sellingPrice || 0) * (item.quantity || 0));
+            });
+        });
+        const ranking = Object.values(somaPorProduto).sort((a, b) => b.qtd - a.qtd).slice(0, 10);
+        const rankingContainer = document.getElementById('ranking-lista');
+        const rankingVazio = document.getElementById('ranking-vazio');
+        rankingContainer.innerHTML = '';
+        if (ranking.length === 0) {
+            rankingVazio.textContent = 'Nenhuma venda no período selecionado.';
+            rankingVazio.style.display = 'block';
+        } else {
+            rankingVazio.style.display = 'none';
+            ranking.forEach((item, i) => {
+                const row = document.createElement('div');
+                row.className = 'ranking-item';
+                row.innerHTML = `
+                    <div class="ranking-pos">${i + 1}</div>
+                    <div class="ranking-info">
+                        <div class="ranking-nome">${item.name || 'Produto'}</div>
+                        <div class="ranking-qtd">${formatQuantidade(item.qtd)} un. vendidas</div>
+                    </div>
+                    <div class="ranking-valor">${formatMoeda(item.valor)}</div>
+                `;
+                rankingContainer.appendChild(row);
+            });
+        }
+
+        // ----- Comparativo: mês atual (até hoje) vs. mesmo trecho do mês anterior -----
+        const anoAtual = parseInt(hoje.slice(0, 4), 10);
+        const mesAtualIdx = parseInt(hoje.slice(5, 7), 10) - 1;
+        const diaAtual = parseInt(hoje.slice(8, 10), 10);
+        const inicioMesAtual = hoje.slice(0, 8) + '01';
+
+        const dataMesAnterior = new Date(anoAtual, mesAtualIdx - 1, 1);
+        const anoAnterior = dataMesAnterior.getFullYear();
+        const mesAnteriorIdx = dataMesAnterior.getMonth();
+        const diasNoMesAnterior = new Date(anoAnterior, mesAnteriorIdx + 1, 0).getDate();
+        const diaFimAnterior = Math.min(diaAtual, diasNoMesAnterior);
+        const inicioMesAnterior = `${anoAnterior}-${String(mesAnteriorIdx + 1).padStart(2, '0')}-01`;
+        const fimMesAnterior = `${anoAnterior}-${String(mesAnteriorIdx + 1).padStart(2, '0')}-${String(diaFimAnterior).padStart(2, '0')}`;
+
+        const totalMesAtual = todas.filter(s => s.salesDate >= inicioMesAtual && s.salesDate <= hoje)
+            .reduce((acc, s) => acc + parseFloat(s.totalValue || 0), 0);
+        const totalMesAnterior = todas.filter(s => s.salesDate >= inicioMesAnterior && s.salesDate <= fimMesAnterior)
+            .reduce((acc, s) => acc + parseFloat(s.totalValue || 0), 0);
+
+        document.getElementById('comparativo-atual').textContent = formatMoeda(totalMesAtual);
+        document.getElementById('comparativo-anterior').textContent = formatMoeda(totalMesAnterior);
+        document.getElementById('comparativo-atual-nome').textContent = `${NOMES_MESES[mesAtualIdx]} (até dia ${diaAtual})`;
+        document.getElementById('comparativo-anterior-nome').textContent = `${NOMES_MESES[mesAnteriorIdx]} (até dia ${diaFimAnterior})`;
+
+        const elPct = document.getElementById('comparativo-pct');
+        const elDiff = document.getElementById('comparativo-diff');
+        let pct = 0;
+        if (totalMesAnterior > 0) {
+            pct = ((totalMesAtual - totalMesAnterior) / totalMesAnterior) * 100;
+            elPct.textContent = `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%`;
+        } else if (totalMesAtual > 0) {
+            elPct.textContent = '▲ NOVO';
+            pct = 100;
+        } else {
+            elPct.textContent = '-';
+        }
+        elPct.style.color = pct > 0 ? '#219150' : (pct < 0 ? 'var(--red)' : 'var(--text-strong)');
+        elDiff.textContent = `${formatMoeda(Math.abs(totalMesAtual - totalMesAnterior))} de diferença`;
+    }
+
+    function esconderTooltipAnalise() {
+        document.getElementById('analise-chart-tooltip').classList.remove('show');
+    }
+
+    function desenharGraficoAnalise(somaPorDia) {
+        const svg = document.getElementById('analise-chart-svg');
+        const empty = document.getElementById('analise-chart-empty');
+        const wrap = document.getElementById('analise-chart-wrap');
+        const tooltip = document.getElementById('analise-chart-tooltip');
+        svg.innerHTML = '';
+        esconderTooltipAnalise();
+
+        const datas = Object.keys(somaPorDia).sort();
+        const totalPeriodo = datas.reduce((acc, d) => acc + somaPorDia[d], 0);
+        if (datas.length === 0 || totalPeriodo <= 0) {
+            svg.style.display = 'none';
+            empty.style.display = 'block';
+            empty.textContent = 'Nenhuma venda no período selecionado.';
+            return;
+        }
+        empty.style.display = 'none';
+        svg.style.display = 'block';
+
+        const ns = 'http://www.w3.org/2000/svg';
+        const W = 340, H = 190;
+        const mL = 40, mR = 8, mT = 12, mB = 24;
+        const uw = W - mL - mR, uh = H - mT - mB;
+        const maxValor = Math.max(...datas.map(d => somaPorDia[d]), 1);
+
+        // Linhas de grade + rótulos do eixo Y (só 3 faixas, pra não poluir uma tela pequena)
+        const ySteps = 3;
+        for (let i = 0; i <= ySteps; i++) {
+            const y = mT + (uh / ySteps) * i;
+            const val = maxValor * (1 - i / ySteps);
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', mL); line.setAttribute('x2', W - mR);
+            line.setAttribute('y1', y); line.setAttribute('y2', y);
+            line.setAttribute('stroke', i === ySteps ? '#cbd5e0' : '#edf2f7');
+            line.setAttribute('stroke-width', i === ySteps ? '1.2' : '1');
+            svg.appendChild(line);
+
+            const text = document.createElementNS(ns, 'text');
+            text.setAttribute('x', mL - 6); text.setAttribute('y', y + 3);
+            text.setAttribute('text-anchor', 'end');
+            text.setAttribute('font-size', '8'); text.setAttribute('fill', 'var(--text-muted)');
+            text.textContent = val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0);
+            svg.appendChild(text);
+        }
+
+        const spacing = uw / datas.length;
+        const barW = Math.max(2, spacing * 0.62);
+        const passoLabel = Math.max(1, Math.ceil(datas.length / 6));
+
+        datas.forEach((d, i) => {
+            const valor = somaPorDia[d];
+            const barH = (valor / maxValor) * uh;
+            const x = mL + i * spacing + (spacing - barW) / 2;
+            const y = mT + uh - barH;
+
+            const rect = document.createElementNS(ns, 'rect');
+            rect.setAttribute('x', x); rect.setAttribute('y', y);
+            rect.setAttribute('width', barW); rect.setAttribute('height', Math.max(barH, valor > 0 ? 1.5 : 0));
+            rect.setAttribute('rx', '2');
+            rect.setAttribute('fill', 'var(--purple)');
+            rect.setAttribute('opacity', valor > 0 ? '0.88' : '0.15');
+            svg.appendChild(rect);
+
+            if (i % passoLabel === 0 || i === datas.length - 1) {
+                const label = document.createElementNS(ns, 'text');
+                label.setAttribute('x', x + barW / 2); label.setAttribute('y', H - 6);
+                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('font-size', '7.3'); label.setAttribute('fill', 'var(--text-muted)');
+                label.textContent = d.split('-').slice(1).reverse().join('/');
+                svg.appendChild(label);
+            }
+
+            // Tooltip ao tocar/clicar na barra (equivalente touch do hover do PC)
+            const zonaToque = document.createElementNS(ns, 'rect');
+            zonaToque.setAttribute('x', mL + i * spacing); zonaToque.setAttribute('y', mT);
+            zonaToque.setAttribute('width', spacing); zonaToque.setAttribute('height', uh);
+            zonaToque.setAttribute('fill', 'transparent');
+            zonaToque.addEventListener('click', (evt) => {
+                const wrapRect = wrap.getBoundingClientRect();
+                const svgRect = svg.getBoundingClientRect();
+                const escala = svgRect.width / W;
+                tooltip.innerHTML = `<div>${d.split('-').reverse().join('/')}</div><div>${formatMoeda(valor)}</div>`;
+                tooltip.style.left = `${(svgRect.left - wrapRect.left) + (x + barW / 2) * escala}px`;
+                tooltip.style.top = `${(svgRect.top - wrapRect.top) + y * escala}px`;
+                tooltip.classList.add('show');
+                evt.stopPropagation();
+            });
+            svg.appendChild(zonaToque);
+        });
+
+        svg.addEventListener('click', esconderTooltipAnalise);
+    }
+    // ===== FIM ABA ANÁLISE =====
+
+    // ===== HELPERS DE ESTOQUE POR LOCAL (com compatibilidade com produtos ainda não migrados) =====
+    // Retorna as chaves de locais cadastrados, ordenadas pela ordem de criação (o mais antigo primeiro).
+    // O local mais antigo é usado como "destino" do estoque legado de produtos que ainda não têm
+    // estoquePorLocal definido (ou seja, todo o readyStock antigo é considerado como estando nele).
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (localKeysOrdenados) =====
+    function localKeysOrdenados() {
+        return Object.keys(allLoadedLocais).sort((a, b) => (allLoadedLocais[a].criadoEm || 0) - (allLoadedLocais[b].criadoEm || 0));
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (localKeysOrdenados) =====
+
+    // Monta um objeto { localKey: quantidade } para um produto que nunca foi migrado (não tem estoquePorLocal),
+    // jogando todo o readyStock atual no local mais antigo e 0 nos demais.
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (construirPorLocalLegado) =====
+    function construirPorLocalLegado(prod) {
+        const obj = {};
+        const chaves = localKeysOrdenados();
+        chaves.forEach(k => { obj[k] = 0; });
+        if (chaves.length > 0) obj[chaves[0]] = parseFloat(prod?.readyStock || 0);
+        return obj;
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (construirPorLocalLegado) =====
+
+    // Retorna o mapa { localKey: quantidade } de um produto, já migrado ou não (nunca retorna null).
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (getEstoquePorLocalCompleto) =====
+    function getEstoquePorLocalCompleto(prod) {
+        if (!prod) return {};
+        if (prod.estoquePorLocal && typeof prod.estoquePorLocal === 'object') {
+            // garante que todo local cadastrado apareça no mapa (mesmo que com 0)
+            const completo = { ...prod.estoquePorLocal };
+            localKeysOrdenados().forEach(k => { if (!(k in completo)) completo[k] = 0; });
+            return completo;
+        }
+        return construirPorLocalLegado(prod);
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (getEstoquePorLocalCompleto) =====
+
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (getEstoqueTotal) =====
+    function getEstoqueTotal(prod) {
+        if (!prod) return 0;
+        if (prod.estoquePorLocal && typeof prod.estoquePorLocal === 'object') {
+            return Object.values(prod.estoquePorLocal).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        }
+        return parseFloat(prod?.readyStock || 0);
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (getEstoqueTotal) =====
+
+    function getEstoqueNoLocal(prod, localKey) {
+        if (!prod || !localKey) return 0;
+        const mapa = getEstoquePorLocalCompleto(prod);
+        return parseFloat(mapa[localKey] || 0);
+    }
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (nomeDoLocal) =====
+    function nomeDoLocal(localKey) {
+        return (allLoadedLocais[localKey] && allLoadedLocais[localKey].nome) || 'Local removido';
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (nomeDoLocal) =====
+
+    // Retorna o preço de venda do produto para um local específico: usa o preço específico
+    // cadastrado na Aba 12 do PC (Preços por Local) se houver; senão cai no Preço Base do produto.
+    function getPrecoProdutoNoLocal(prod, localKey) {
+        if (!prod) return 0;
+        if (localKey && prod.precosPorLocal && prod.precosPorLocal[localKey] !== undefined && prod.precosPorLocal[localKey] !== null && prod.precosPorLocal[localKey] !== '') {
+            return parseFloat(prod.precosPorLocal[localKey]) || 0;
+        }
+        return parseFloat(prod.sellingPrice || 0);
+    }
+
+    // Ajusta o estoque de um produto/local só em memória (sem gravar no Firebase ainda). Usado durante
+    // a validação do formulário de venda, pra simular "desfazer" o estoque da versão antiga da venda
+    // antes de checar se o novo estoque é suficiente (e poder desfazer essa simulação se algo for inválido).
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (ajustarEstoqueMemoria) =====
+    function ajustarEstoqueMemoria(prodKey, localKey, delta) {
+        const p = allLoadedProducts[prodKey];
+        if (!p || !localKey || !delta) return;
+        const mapa = getEstoquePorLocalCompleto(p);
+        mapa[localKey] = parseFloat(((parseFloat(mapa[localKey]) || 0) + delta).toFixed(3));
+        p.estoquePorLocal = mapa;
+        p.readyStock = Object.values(mapa).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (ajustarEstoqueMemoria) =====
+
+    // Aplica uma variação (delta, pode ser negativo) de estoque num produto/local específico,
+    // recalcula o total (readyStock) para manter compatibilidade com o sistema do PC, e grava tudo no Firebase.
+    // Também atualiza allLoadedProducts em memória na hora, para que validações seguintes no mesmo fluxo já
+    // enxerguem o novo valor (sem esperar o próximo onValue do Firebase).
+    // Grava no Firebase exatamente o que já está no objeto do produto em memória (estoquePorLocal + total).
+    // Usado depois que o formulário de venda já mexeu na memória via ajustarEstoqueMemoria, pra persistir
+    // o resultado final de uma vez (em vez de somar deltas de novo, o que duplicaria a conta).
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (persistirEstoqueMemoria) =====
+    function persistirEstoqueMemoria(prodKey) {
+        const p = allLoadedProducts[prodKey];
+        if (!p) return Promise.resolve();
+        const mapa = getEstoquePorLocalCompleto(p);
+        const total = Object.values(mapa).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        p.estoquePorLocal = mapa;
+        p.readyStock = total;
+        return Promise.all([
+            set(ref(db, `produtos/${prodKey}/estoquePorLocal`), mapa),
+            set(ref(db, `produtos/${prodKey}/readyStock`), total)
+        ]);
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (persistirEstoqueMemoria) =====
+
+    function aplicarDeltaEstoque(prodKey, localKey, delta) {
+        const prod = allLoadedProducts[prodKey];
+        if (!prod || !localKey || !delta) return Promise.resolve();
+        const mapa = getEstoquePorLocalCompleto(prod);
+        mapa[localKey] = parseFloat((parseFloat(mapa[localKey] || 0) + delta).toFixed(3));
+        const novoTotal = Object.values(mapa).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        prod.estoquePorLocal = mapa;
+        prod.readyStock = novoTotal;
+        return Promise.all([
+            set(ref(db, `produtos/${prodKey}/estoquePorLocal`), mapa),
+            set(ref(db, `produtos/${prodKey}/readyStock`), novoTotal)
+        ]);
+    }
+
+    // ===== BAIXA DE ESTOQUE ATÔMICA (protege contra venda concorrente em vários dispositivos) =====
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html e sistema_autoatendimento.html — ao mudar aqui, mudar lá também (aplicarDeltaEstoqueTransacao) =====
+    function aplicarDeltaEstoqueTransacao(prodKey, localKey, delta) {
+        if (!prodKey || !localKey || !delta) return Promise.resolve();
+        return runTransaction(ref(db, `produtos/${prodKey}`), (prod) => {
+            if (prod === null) return prod;
+            const mapa = prod.estoquePorLocal ? { ...prod.estoquePorLocal } : {};
+            if (!prod.estoquePorLocal && prod.readyStock) {
+                mapa[localKey] = parseFloat(prod.readyStock) || 0;
+            }
+            const atual = parseFloat(mapa[localKey] || 0);
+            const novo = parseFloat((atual + delta).toFixed(3));
+            if (delta < 0 && novo < -0.001) {
+                return; // undefined aborta a transação: outro dispositivo já consumiu esse estoque
+            }
+            mapa[localKey] = Math.max(0, novo);
+            prod.estoquePorLocal = mapa;
+            prod.readyStock = Object.values(mapa).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+            return prod;
+        }).then((resultado) => {
+            if (!resultado.committed) {
+                const nomeProduto = (allLoadedProducts[prodKey] && allLoadedProducts[prodKey].name) || prodKey;
+                const err = new Error(`Estoque insuficiente de "${nomeProduto}"`);
+                err.code = 'ESTOQUE_INSUFICIENTE';
+                err.nomeProduto = nomeProduto;
+                throw err;
+            }
+            return resultado;
+        });
+    }
+
+    function aplicarDeltasEstoqueAtomico(deltaPorProduto, localKey) {
+        const chaves = Object.keys(deltaPorProduto).filter(k => deltaPorProduto[k]);
+        if (chaves.length === 0) return Promise.resolve();
+        return Promise.all(chaves.map(prodKey =>
+            aplicarDeltaEstoqueTransacao(prodKey, localKey, deltaPorProduto[prodKey])
+                .then(() => ({ prodKey, ok: true }))
+                .catch(err => ({ prodKey, ok: false, nomeProduto: err.nomeProduto || prodKey }))
+        )).then(resultados => {
+            const falhas = resultados.filter(r => !r.ok);
+            if (falhas.length === 0) return;
+            const sucessos = resultados.filter(r => r.ok);
+            return Promise.all(sucessos.map(s => aplicarDeltaEstoqueTransacao(s.prodKey, localKey, -deltaPorProduto[s.prodKey]).catch(() => {})))
+                .then(() => {
+                    const err = new Error('Estoque insuficiente para: ' + falhas.map(f => f.nomeProduto).join(', '));
+                    err.code = 'ESTOQUE_INSUFICIENTE';
+                    err.produtos = falhas.map(f => f.nomeProduto);
+                    throw err;
+                });
+        });
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (aplicarDeltaEstoqueTransacao / aplicarDeltasEstoqueAtomico) =====
+
+    // CUSTO EFETIVO DE UM PRODUTO: usa o preço de custo salvo manualmente no cadastro (costPrice, Aba 2 do
+    // PC) se existir; senão cai pro custo da última Ordem de Produção do produto.
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (getCustoEfetivoProduto) =====
+    function getCustoEfetivoProduto(prod) {
+        if (prod && prod.costPrice !== undefined && prod.costPrice !== null && prod.costPrice !== '') {
+            return parseFloat(prod.costPrice) || 0;
+        }
+        const opsDoProduto = Object.values(allLoadedProductions).filter(o => o.name.toLowerCase() === (prod.name || '').toLowerCase());
+        return opsDoProduto.length > 0 ? (opsDoProduto[opsDoProduto.length - 1].costPerUnit || 0) : 0;
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (getCustoEfetivoProduto) =====
+
+    // ===== CÁLCULO DO SALDO DE CRÉDITO DO CLIENTE (DERIVADO DO HISTÓRICO DE VENDAS, IGUAL AO SITE DO PC) =====
+    // ===== LÓGICA COMPARTILHADA: função também existe em index_PC.html — ao mudar aqui, mudar lá também (calcularCreditoCliente) =====
+    function calcularCreditoCliente(nomeCliente) {
+        if (!nomeCliente) return 0;
+        const nomeLower = nomeCliente.toLowerCase();
+        let credito = 0;
+        Object.values(allLoadedSales).forEach(s => {
+            if ((s.clientName || '').toLowerCase() !== nomeLower) return;
+            if (s.origemCredito) {
+                credito += parseFloat(s.totalValue || 0);
+            } else if ((s.status || 'PAGO') === 'PAGO') {
+                credito += parseFloat(s.creditoGerado || 0) - parseFloat(s.creditoUsado || 0);
+            }
+        });
+        return Math.max(0, parseFloat(credito.toFixed(2)));
+    }
+    // ===== FIM LÓGICA COMPARTILHADA (calcularCreditoCliente) =====
+
+
+    // ===== CARREGAMENTO DO FIREBASE =====
+    onValue(ref(db, 'produtos'), (snap) => {
+        allLoadedProducts = snap.val() || {};
+        atualizarSelectsProdutoExistentes();
+        renderEstoqueLista(document.getElementById('estoque-busca') ? document.getElementById('estoque-busca').value : '');
+    });
+
+    onValue(ref(db, 'clientes'), (snap) => {
+        allLoadedClientes = snap.val() || {};
+    });
+
+    // CORREÇÃO DE BUG: faltava carregar as ordens de produção no mobile - sem isso, o lucro da venda
+    // (totalProfit) nunca era calculado nem salvo, zerando o "Lucro Bruto" do dashboard do PC para
+    // toda venda feita pelo celular.
+    sincronizarColecaoIncremental('historico_producao', allLoadedProductions, () => {});
+
+    sincronizarColecaoIncremental('vendas', allLoadedSales, () => {
+        renderLista();
+    });
+
+    onValue(ref(db, 'contas'), (snap) => {
+        allLoadedContas = snap.val() || {};
+    });
+
+    onValue(ref(db, 'locais'), (snap) => {
+        allLoadedLocais = snap.val() || {};
+        atualizarBadgesLocal();
+        renderEstoqueLista(document.getElementById('estoque-busca') ? document.getElementById('estoque-busca').value : '');
+        if (document.getElementById('local-modal-overlay').classList.contains('show')) renderLocalModalLista();
+        popularSelectsTransferencia();
+        if (!locaisJaCarregados) {
+            locaisJaCarregados = true;
+            // Se o local salvo neste aparelho não existe mais (ex: apagado), ou nunca foi escolhido, força a escolha.
+            if (!localAtualKey || !allLoadedLocais[localAtualKey]) abrirModalLocal(true);
+        }
+    });
+
+    onValue(ref(db, 'transferenciasEstoque'), (snap) => {
+        allLoadedTransferencias = snap.val() || {};
+        renderHistoricoTransferencias();
+    });
+
+    // ===== FILTROS =====
+    function atualizarVisualFiltro() {
+        document.querySelectorAll('#filtros .filtro-btn').forEach(btn => {
+            const st = btn.dataset.status;
+            if (st === 'TODOS') btn.classList.toggle('ativo', STATUS_INDIVIDUAIS.every(s => vendasFiltroStatus.has(s)));
+            else btn.classList.toggle('ativo', vendasFiltroStatus.has(st));
+        });
+    }
+    document.querySelectorAll('#filtros .filtro-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const st = btn.dataset.status;
+            if (st === 'TODOS') {
+                const todosAtivos = STATUS_INDIVIDUAIS.every(s => vendasFiltroStatus.has(s));
+                vendasFiltroStatus = todosAtivos ? new Set() : new Set(STATUS_INDIVIDUAIS);
+            } else {
+                if (vendasFiltroStatus.has(st)) vendasFiltroStatus.delete(st); else vendasFiltroStatus.add(st);
+            }
+            atualizarVisualFiltro();
+            renderLista();
+        });
+    });
+
+    // ===== BUSCA POR NOME DO CLIENTE =====
+    const buscaClienteInput = document.getElementById('vendas-busca-cliente');
+    if (buscaClienteInput) {
+        buscaClienteInput.addEventListener('input', () => renderLista());
+    }
+
+    // ===== RENDER DA LISTA (CARDS) =====
+    function renderLista() {
+        const container = document.getElementById('lista-vendas');
+        const emptyState = document.getElementById('empty-state');
+        container.innerHTML = '';
+        atualizarKpiHoje();
+
+        const termoBusca = (buscaClienteInput ? buscaClienteInput.value : '').trim().toLowerCase();
+
+        // AJUSTE: histórico mostra apenas as vendas feitas no local escolhido neste aparelho, não de
+        // todos os locais. Sem local selecionado, não mostra nenhuma venda (evita misturar locais).
+        let lista = Object.keys(allLoadedSales)
+            .filter(key => !allLoadedSales[key].origemCredito)
+            .filter(key => vendasFiltroStatus.has(allLoadedSales[key].status || 'PAGO'))
+            .filter(key => allLoadedSales[key].localVendaKey === localAtualKey)
+            .filter(key => !termoBusca || (allLoadedSales[key].clientName || 'CONSUMIDOR FINAL').toLowerCase().includes(termoBusca))
+            .map(key => ({ key, ...allLoadedSales[key] }))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        if (lista.length === 0) { emptyState.style.display = 'block'; return; }
+        emptyState.style.display = 'none';
+
+        lista.forEach(s => {
+            const status = s.status || 'PAGO';
+            const dataFormatada = s.salesDate ? s.salesDate.split('-').reverse().join('/') : '---';
+            const descItens = (s.items || []).map(i => `${i.quantity}x ${i.productName}`).join(', ') || 'Sem itens';
+            const card = document.createElement('div');
+            card.className = 'venda-card';
+            card.innerHTML = `
+                <div class="venda-card-top">
+                    <div>
+                        <div class="venda-cliente">${s.clientName || 'CONSUMIDOR FINAL'}</div>
+                        <div class="venda-data">${dataFormatada}</div>
+                        ${vencimentoBadgeHtml(s)}
+                    </div>
+                    <span class="badge-status status-${status.toLowerCase()}">${status}</span>
+                </div>
+                <div class="venda-itens">${descItens}</div>
+                <div class="venda-bottom">
+                    <span class="venda-qtd">${s.quantity || 0} un.</span>
+                    <span class="venda-total">${formatMoeda(s.totalValue)}</span>
+                </div>
+            `;
+            card.addEventListener('click', () => abrirFormulario(s.key));
+            container.appendChild(card);
+        });
+    }
+
+    // ===== NAVEGAÇÃO ENTRE TELAS =====
+    function mostrarLista() {
+        document.getElementById('list-view').style.display = 'block';
+        document.getElementById('form-view').style.display = 'none';
+        document.getElementById('btn-nova-venda').style.display = 'block';
+        document.getElementById('btn-voltar-form').style.display = 'none';
+        document.getElementById('btn-toggle-sidenav').style.display = 'flex';
+        document.getElementById('header-title').textContent = 'Vendas';
+        document.getElementById('header-subtitle').textContent = 'Histórico e registro de vendas';
+        currentSaleId = null;
+    }
+    function mostrarFormulario() {
+        document.getElementById('list-view').style.display = 'none';
+        document.getElementById('form-view').style.display = 'block';
+        document.getElementById('btn-nova-venda').style.display = 'none';
+        document.getElementById('btn-voltar-form').style.display = 'flex';
+        document.getElementById('btn-toggle-sidenav').style.display = 'none';
+    }
+
+    // ===== NAVEGAÇÃO ENTRE ABAS DA SIDEBAR (VENDAS / ESTOQUE / TRANSFERIR) =====
+    function mostrarAbaLateral(view) {
+        document.querySelectorAll('.side-nav-btn').forEach(b => b.classList.toggle('ativo', b.dataset.view === view));
+        const vendasHeader = document.getElementById('page-header');
+        const vendasContainer = document.getElementById('vendas-container');
+        const estoqueHeader = document.getElementById('estoque-header');
+        const estoqueContainer = document.getElementById('estoque-container');
+        const transferHeader = document.getElementById('transferencia-header');
+        const transferContainer = document.getElementById('transferencia-container');
+        const analiseHeader = document.getElementById('analise-header');
+        const analiseContainer = document.getElementById('analise-container');
+
+        vendasHeader.style.display = 'none';
+        vendasContainer.style.display = 'none';
+        estoqueHeader.style.display = 'none';
+        estoqueContainer.style.display = 'none';
+        transferHeader.style.display = 'none';
+        transferContainer.style.display = 'none';
+        analiseHeader.style.display = 'none';
+        analiseContainer.style.display = 'none';
+        document.getElementById('btn-nova-venda').style.display = 'none';
+
+        if (view === 'estoque') {
+            estoqueHeader.style.display = 'block';
+            estoqueContainer.style.display = 'block';
+            renderEstoqueLista(document.getElementById('estoque-busca').value);
+        } else if (view === 'transferencia') {
+            transferHeader.style.display = 'block';
+            transferContainer.style.display = 'block';
+            popularSelectsTransferencia();
+            renderHistoricoTransferencias();
+            if (document.getElementById('transfer-itens-container').children.length === 0) criarLinhaItemTransferencia();
+        } else if (view === 'analise') {
+            analiseHeader.style.display = 'block';
+            analiseContainer.style.display = 'block';
+            renderAnalise();
+        } else {
+            vendasHeader.style.display = 'block';
+            vendasContainer.style.display = 'block';
+            document.getElementById('btn-nova-venda').style.display = 'block';
+            mostrarLista();
+        }
+    }
+    document.querySelectorAll('.side-nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => { mostrarAbaLateral(btn.dataset.view); fecharSideNav(); });
+    });
+
+    // ===== ABRIR/FECHAR PAINEL LATERAL (agora fica escondido por padrão e desliza por cima) =====
+    function abrirSideNav() {
+        document.getElementById('side-nav').classList.add('open');
+        document.getElementById('side-nav-backdrop').classList.add('show');
+    }
+    function fecharSideNav() {
+        document.getElementById('side-nav').classList.remove('open');
+        document.getElementById('side-nav-backdrop').classList.remove('show');
+    }
+    document.getElementById('btn-toggle-sidenav').addEventListener('click', abrirSideNav);
+    document.getElementById('btn-toggle-sidenav-estoque').addEventListener('click', abrirSideNav);
+    document.getElementById('btn-toggle-sidenav-transferencia').addEventListener('click', abrirSideNav);
+    document.getElementById('btn-toggle-sidenav-analise').addEventListener('click', abrirSideNav);
+    document.getElementById('side-nav-backdrop').addEventListener('click', fecharSideNav);
+
+    // ===== ABA ESTOQUE: TABELA COM QUANTIDADE SOMENTE DO LOCAL ESCOLHIDO NESTE APARELHO, CLIQUE ABRE O AJUSTE =====
+    // estoqueSortQtd: null = ordem alfabética (padrão) | 'desc' = maior p/ menor | 'asc' = menor p/ maior
+    let estoqueSortQtd = null;
+    let estoqueMostrarZerados = false;
+    function renderEstoqueLista(filtro = '') {
+        const container = document.getElementById('estoque-lista');
+        const empty = document.getElementById('estoque-empty');
+        const thQtd = document.getElementById('th-estoque-qtd');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (thQtd) thQtd.classList.toggle('sort-asc', estoqueSortQtd === 'asc');
+        if (thQtd) thQtd.classList.toggle('sort-desc', estoqueSortQtd === 'desc');
+
+        if (!localAtualKey || !allLoadedLocais[localAtualKey]) {
+            document.querySelector('.estoque-tabela-wrap').style.display = 'none';
+            empty.style.display = 'block';
+            empty.textContent = 'Selecione o local deste aparelho para ver o estoque dele.';
+            return;
+        }
+        document.querySelector('.estoque-tabela-wrap').style.display = 'block';
+
+        const termo = filtro.trim().toLowerCase();
+        let entradas = Object.entries(allLoadedProducts)
+            .filter(([k, p]) => (p.name || '').toLowerCase().includes(termo))
+            .map(([key, p]) => ({ key, p, qtd: getEstoqueNoLocal(p, localAtualKey) }))
+            .filter(({ qtd }) => estoqueMostrarZerados || qtd > 0); // por padrão esconde zerados; botão "Mostrar zerados" revela pra permitir reabastecer
+
+        if (estoqueSortQtd === 'desc') entradas.sort((a, b) => b.qtd - a.qtd || (a.p.name || '').localeCompare(b.p.name || '', 'pt-BR'));
+        else if (estoqueSortQtd === 'asc') entradas.sort((a, b) => a.qtd - b.qtd || (a.p.name || '').localeCompare(b.p.name || '', 'pt-BR'));
+        else entradas.sort((a, b) => (a.p.name || '').localeCompare(b.p.name || '', 'pt-BR'));
+
+        if (entradas.length === 0) {
+            empty.style.display = 'block';
+            empty.textContent = termo
+                ? 'Nenhum produto encontrado para essa busca.'
+                : (estoqueMostrarZerados ? 'Nenhum produto cadastrado.' : 'Nenhum produto com estoque neste local.');
+            return;
+        }
+        empty.style.display = 'none';
+
+        entradas.forEach(({ key, p, qtd }) => {
+            const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.innerHTML = `
+                <td class="estoque-td-desc">${p.name}${qtd <= 0 ? ' <span class="estoque-zerado-tag">zerado</span>' : ''}</td>
+                <td class="estoque-td-qtd">${formatQuantidade(qtd)}<span class="unidade">un.</span></td>
+            `;
+            row.addEventListener('click', () => abrirAjusteEstoque(key));
+            container.appendChild(row);
+        });
+    }
+    document.getElementById('estoque-busca').addEventListener('input', () => renderEstoqueLista(document.getElementById('estoque-busca').value));
+    document.getElementById('th-estoque-qtd').addEventListener('click', () => {
+        estoqueSortQtd = estoqueSortQtd === 'desc' ? 'asc' : 'desc';
+        renderEstoqueLista(document.getElementById('estoque-busca').value);
+    });
+    document.getElementById('btn-toggle-estoque-zerados').addEventListener('click', (e) => {
+        estoqueMostrarZerados = !estoqueMostrarZerados;
+        e.target.classList.toggle('ativo', estoqueMostrarZerados);
+        e.target.textContent = estoqueMostrarZerados ? '🙈 Ocultar zerados' : '👁️ Mostrar zerados';
+        renderEstoqueLista(document.getElementById('estoque-busca').value);
+    });
+
+    // ===== AJUSTE RÁPIDO DE ESTOQUE (BOTTOM SHEET, ABRE AO TOCAR NO PRODUTO NA ABA ESTOQUE) =====
+    // Agora mostra um campo de quantidade por local cadastrado (em vez de um único número).
+    let estoqueAjusteKeyAtual = null;
+    function abrirAjusteEstoque(key) {
+        const prod = allLoadedProducts[key];
+        if (!prod) return;
+        if (localKeysOrdenados().length === 0) {
+            showToast('Cadastre pelo menos um local antes de ajustar o estoque.', 'warning');
+            abrirModalLocal(false);
+            return;
+        }
+        if (!localAtualKey || !allLoadedLocais[localAtualKey]) {
+            showToast('Selecione o local deste aparelho antes de ajustar o estoque.', 'warning');
+            abrirModalLocal(true);
+            return;
+        }
+        estoqueAjusteKeyAtual = key;
+        document.getElementById('estoque-ajuste-nome').textContent = `📦 ${prod.name}`;
+        const mapa = getEstoquePorLocalCompleto(prod);
+        const lista = document.getElementById('estoque-ajuste-locais-lista');
+        // Mostra somente o local deste aparelho — evita que o usuário veja/mexa no estoque dos outros locais.
+        lista.innerHTML = `
+            <div class="estoque-ajuste-local-row">
+                <span class="estoque-ajuste-local-nome">${nomeDoLocal(localAtualKey)}</span>
+                <input type="number" min="0" step="any" data-local-key="${localAtualKey}" value="${mapa[localAtualKey] || 0}">
+            </div>
+        `;
+        document.getElementById('estoque-ajuste-overlay').classList.add('show');
+    }
+    document.getElementById('estoque-ajuste-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'estoque-ajuste-overlay') document.getElementById('estoque-ajuste-overlay').classList.remove('show');
+    });
+    document.getElementById('btn-salvar-ajuste-estoque').addEventListener('click', () => {
+        if (!estoqueAjusteKeyAtual || !localAtualKey) return;
+        const inp = document.querySelector('#estoque-ajuste-locais-lista input[data-local-key]');
+        if (!inp) return;
+        const v = parseFloat(inp.value);
+        if (isNaN(v) || v < 0) { showToast('Informe uma quantidade válida.', 'warning'); return; }
+        const prod = allLoadedProducts[estoqueAjusteKeyAtual];
+        // Preserva os valores dos outros locais (não visíveis/editáveis aqui) e altera só o local deste aparelho.
+        const mapaAtual = getEstoquePorLocalCompleto(prod);
+        const novoMapa = { ...mapaAtual, [localAtualKey]: v };
+        const novoTotal = Object.values(novoMapa).reduce((s, val) => s + val, 0);
+        Promise.all([
+            set(ref(db, `produtos/${estoqueAjusteKeyAtual}/estoquePorLocal`), novoMapa),
+            set(ref(db, `produtos/${estoqueAjusteKeyAtual}/readyStock`), novoTotal)
+        ]).then(() => {
+            if (allLoadedProducts[estoqueAjusteKeyAtual]) {
+                allLoadedProducts[estoqueAjusteKeyAtual].estoquePorLocal = novoMapa;
+                allLoadedProducts[estoqueAjusteKeyAtual].readyStock = novoTotal;
+            }
+            showToast('Ajuste de estoque salvo!', 'success');
+            document.getElementById('estoque-ajuste-overlay').classList.remove('show');
+        }).catch(err => {
+            console.error('Erro ao salvar estoque por local:', err);
+            showToast('Não foi possível salvar o estoque. Verifique sua conexão.', 'danger');
+        });
+    });
+
+    // ===== BADGE DE LOCAL DO DISPOSITIVO (cabeçalhos) =====
+    function atualizarBadgesLocal() {
+        const nome = localAtualKey && allLoadedLocais[localAtualKey] ? allLoadedLocais[localAtualKey].nome : 'Selecionar local...';
+        const v = document.getElementById('local-badge-txt-vendas');
+        const e = document.getElementById('local-badge-txt-estoque');
+        if (v) v.textContent = nome;
+        if (e) e.textContent = nome;
+    }
+    document.getElementById('btn-local-badge-vendas').addEventListener('click', () => abrirModalLocal(false));
+    document.getElementById('btn-local-badge-estoque').addEventListener('click', () => abrirModalLocal(false));
+
+    // ===== MODAL: SELECIONAR / GERENCIAR LOCAIS =====
+    let localModalObrigatorio = false; // true quando ainda não há local escolhido neste aparelho (não pode fechar sem escolher)
+    let localEmEdicaoKey = null; // local cujo nome está sendo editado inline no momento
+
+    function abrirModalLocal(obrigatorio) {
+        localModalObrigatorio = obrigatorio;
+        localEmEdicaoKey = null;
+        document.getElementById('local-novo-nome').value = '';
+        renderLocalModalLista();
+        document.getElementById('local-modal-overlay').classList.add('show');
+    }
+    function fecharModalLocal() {
+        if (localModalObrigatorio && !localAtualKey) {
+            showToast('Selecione um local para continuar usando o sistema neste aparelho.', 'warning');
+            return;
+        }
+        document.getElementById('local-modal-overlay').classList.remove('show');
+    }
+    document.getElementById('local-modal-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'local-modal-overlay') fecharModalLocal();
+    });
+
+    function renderLocalModalLista() {
+        const lista = document.getElementById('local-modal-lista');
+        const empty = document.getElementById('local-modal-empty');
+        lista.innerHTML = '';
+        const chaves = localKeysOrdenados();
+        if (chaves.length === 0) { empty.style.display = 'block'; return; }
+        empty.style.display = 'none';
+
+        chaves.forEach(key => {
+            const loc = allLoadedLocais[key];
+            const row = document.createElement('div');
+            row.className = 'local-item' + (key === localAtualKey ? ' sel' : '');
+
+            if (localEmEdicaoKey === key) {
+                row.innerHTML = `
+                    <span class="local-radio"></span>
+                    <div class="local-item-nome"><input type="text" id="local-edicao-input" value="${loc.nome || ''}"></div>
+                    <button type="button" class="local-btn-icon" id="btn-local-salvar-edicao">✅</button>
+                `;
+                lista.appendChild(row);
+                const inp = row.querySelector('#local-edicao-input');
+                setTimeout(() => inp.focus(), 50);
+                row.querySelector('#btn-local-salvar-edicao').addEventListener('click', (e2) => {
+                    e2.stopPropagation();
+                    salvarNomeLocal(key, inp.value);
+                });
+                inp.addEventListener('keydown', (e2) => { if (e2.key === 'Enter') salvarNomeLocal(key, inp.value); });
+                return;
+            }
+
+            row.innerHTML = `
+                <span class="local-radio"></span>
+                <span class="local-item-nome">${loc.nome || '(sem nome)'}</span>
+                <button type="button" class="local-btn-icon" data-editar="${key}">✏️</button>
+            `;
+            row.addEventListener('click', () => escolherLocalAtual(key));
+            row.querySelector('[data-editar]').addEventListener('click', (e2) => {
+                e2.stopPropagation();
+                localEmEdicaoKey = key;
+                renderLocalModalLista();
+            });
+            lista.appendChild(row);
+        });
+    }
+
+    function escolherLocalAtual(key) {
+        localAtualKey = key;
+        localStorage.setItem(LOCAL_STORAGE_KEY, key);
+        atualizarBadgesLocal();
+        renderLocalModalLista();
+        showToast('Local deste dispositivo: ' + nomeDoLocal(key), 'success');
+        document.getElementById('local-modal-overlay').classList.remove('show');
+        // AJUSTE: ao trocar o local deste aparelho, o histórico de vendas (e os KPIs do topo) atualiza
+        // na hora para mostrar apenas as vendas do novo local escolhido.
+        renderLista();
+        if (document.getElementById('vendas-container').style.display !== 'none') atualizarSelectsProdutoExistentes();
+        if (document.getElementById('estoque-container').style.display !== 'none') renderEstoqueLista(document.getElementById('estoque-busca').value);
+        // Origem da transferência e histórico dependem do local deste aparelho — atualiza junto.
+        popularSelectsTransferencia();
+        renderHistoricoTransferencias();
+    }
+
+    function salvarNomeLocal(key, novoNome) {
+        const nome = (novoNome || '').trim();
+        if (!nome) { showToast('Informe um nome válido para o local.', 'warning'); return; }
+        update(ref(db, `locais/${key}`), { nome }).then(() => {
+            localEmEdicaoKey = null;
+            showToast('Local renomeado!', 'success');
+        }).catch(err => {
+            console.error('Erro ao renomear local:', err);
+            showToast('Não foi possível renomear o local. Verifique sua conexão.', 'danger');
+        });
+    }
+
+    document.getElementById('btn-local-adicionar').addEventListener('click', () => {
+        const input = document.getElementById('local-novo-nome');
+        const nome = input.value.trim();
+        if (!nome) { showToast('Informe o nome do novo local.', 'warning'); return; }
+        const novoRef = push(ref(db, 'locais'));
+        set(novoRef, { nome, criadoEm: Date.now() }).then(() => {
+            input.value = '';
+            showToast('Local criado!', 'success');
+            // Se este aparelho ainda não tinha local escolhido, já aproveita e seleciona o recém-criado.
+            if (!localAtualKey) escolherLocalAtual(novoRef.key);
+        }).catch(err => {
+            console.error('Erro ao criar local:', err);
+            showToast('Não foi possível criar o local. Verifique sua conexão.', 'danger');
+        });
+    });
+
+    // ===== ABA TRANSFERÊNCIA DE ESTOQUE =====
+    function popularSelectsTransferencia() {
+        const origem = document.getElementById('transfer-origem');
+        const destino = document.getElementById('transfer-destino');
+        if (!origem || !destino) return;
+        const valDestinoAntigo = destino.value;
+        // Origem é sempre o local deste aparelho — o usuário só pode transferir o que está fisicamente com ele,
+        // então o campo não é mais uma escolha livre.
+        if (localAtualKey && allLoadedLocais[localAtualKey]) {
+            origem.innerHTML = `<option value="${localAtualKey}">${nomeDoLocal(localAtualKey)}</option>`;
+            origem.value = localAtualKey;
+        } else {
+            origem.innerHTML = '<option value="">Selecione o local deste aparelho</option>';
+        }
+        // Destino nunca pode ser o próprio local de origem.
+        const opcoesDestino = localKeysOrdenados().filter(k => k !== localAtualKey).map(k => `<option value="${k}">${nomeDoLocal(k)}</option>`).join('');
+        destino.innerHTML = opcoesDestino;
+        if (valDestinoAntigo && allLoadedLocais[valDestinoAntigo] && valDestinoAntigo !== localAtualKey) destino.value = valDestinoAntigo;
+    }
+
+    // Rótulo do botão de seleção de produto na linha de transferência: mostra somente a descrição
+    // do produto, no mesmo padrão usado na aba de Vendas (sem local/quantidade junto).
+    function textoProdutoBtnTransferencia(productKey) {
+        const prod = allLoadedProducts[productKey];
+        if (!prod) return 'Selecione o produto...';
+        return prod.name;
+    }
+
+    // Cria uma linha de produto+quantidade dentro da transferência em massa.
+    function criarLinhaItemTransferencia(productKey = '', quantity = 1) {
+        const row = document.createElement('div');
+        row.className = 'item-row';
+        row.dataset.productKey = productKey;
+        row.innerHTML = `
+            <button type="button" class="produto-select-btn ${productKey ? '' : 'placeholder'}">${textoProdutoBtnTransferencia(productKey)}</button>
+            <div class="item-row-bottom">
+                <div style="flex:1;">
+                    <label class="item-mini-label">Qtd.</label>
+                    <input type="number" class="item-qtd" min="0.01" step="any" value="${quantity}">
+                </div>
+                <button type="button" class="btn-remove-item">✕</button>
+            </div>
+        `;
+        row.querySelector('.produto-select-btn').addEventListener('click', () => {
+            const origemKey = document.getElementById('transfer-origem').value || null;
+            abrirModalProduto((key) => {
+                row.dataset.productKey = key;
+                const btn = row.querySelector('.produto-select-btn');
+                btn.textContent = textoProdutoBtnTransferencia(key);
+                btn.classList.remove('placeholder');
+            }, origemKey);
+        });
+        row.querySelector('.btn-remove-item').addEventListener('click', () => row.remove());
+        document.getElementById('transfer-itens-container').appendChild(row);
+        return row;
+    }
+
+    // Atualiza os rótulos de estoque de todas as linhas já adicionadas quando o local de origem muda.
+    function atualizarItensTransferenciaLabels() {
+        document.querySelectorAll('#transfer-itens-container .item-row').forEach(row => {
+            const key = row.dataset.productKey;
+            if (key) row.querySelector('.produto-select-btn').textContent = textoProdutoBtnTransferencia(key);
+        });
+    }
+    document.getElementById('transfer-origem').addEventListener('change', atualizarItensTransferenciaLabels);
+    document.getElementById('btn-add-item-transferencia').addEventListener('click', () => criarLinhaItemTransferencia());
+
+    document.getElementById('btn-confirmar-transferencia').addEventListener('click', () => {
+        const origemKey = document.getElementById('transfer-origem').value;
+        const destinoKey = document.getElementById('transfer-destino').value;
+        if (!origemKey || !destinoKey) { showToast('Selecione o local de origem e de destino.', 'warning'); return; }
+        if (origemKey === destinoKey) { showToast('Origem e destino não podem ser o mesmo local.', 'warning'); return; }
+
+        const rows = document.querySelectorAll('#transfer-itens-container .item-row');
+        if (rows.length === 0) { showToast('Adicione ao menos um produto para transferir.', 'warning'); return; }
+
+        const itens = [];
+        for (const row of rows) {
+            const key = row.dataset.productKey;
+            if (!key || !allLoadedProducts[key]) { showToast('Selecione o produto em todas as linhas antes de transferir.', 'warning'); return; }
+            const qtd = parseFloat(row.querySelector('.item-qtd').value);
+            if (isNaN(qtd) || qtd <= 0) { showToast('Informe uma quantidade válida em todas as linhas.', 'warning'); return; }
+            itens.push({ produtoKey: key, produtoNome: allLoadedProducts[key].name, quantidade: qtd });
+        }
+
+        // Agrupa por produto, caso o mesmo produto tenha sido adicionado em mais de uma linha por engano.
+        const agrupadoPorProduto = {};
+        itens.forEach(it => {
+            if (!agrupadoPorProduto[it.produtoKey]) agrupadoPorProduto[it.produtoKey] = { produtoKey: it.produtoKey, produtoNome: it.produtoNome, quantidade: 0 };
+            agrupadoPorProduto[it.produtoKey].quantidade += it.quantidade;
+        });
+        const itensFinal = Object.values(agrupadoPorProduto);
+
+        // Valida estoque disponível na origem para cada produto antes de mexer em qualquer coisa.
+        for (const it of itensFinal) {
+            const prod = allLoadedProducts[it.produtoKey];
+            const disponivel = getEstoqueNoLocal(prod, origemKey);
+            if (it.quantidade > disponivel) {
+                showToast(`Estoque insuficiente de ${prod.name} em ${nomeDoLocal(origemKey)}. Disponível: ${formatQuantidade(disponivel)} un.`, 'warning');
+                return;
+            }
+        }
+
+        const btn = document.getElementById('btn-confirmar-transferencia');
+        btn.disabled = true;
+        btn.textContent = '🔁 Transferindo...';
+
+        Promise.all(itensFinal.flatMap(it => [
+            aplicarDeltaEstoque(it.produtoKey, origemKey, -it.quantidade),
+            aplicarDeltaEstoque(it.produtoKey, destinoKey, it.quantidade)
+        ])).then(() => {
+            const historicoRef = push(ref(db, 'transferenciasEstoque'));
+            return set(historicoRef, {
+                itens: itensFinal,
+                origemKey, origemNome: nomeDoLocal(origemKey),
+                destinoKey, destinoNome: nomeDoLocal(destinoKey),
+                data: hojeISO(), timestamp: Date.now()
+            });
+        }).then(() => {
+            showToast(itensFinal.length > 1 ? 'Transferência em massa registrada!' : 'Transferência registrada!', 'success');
+            document.getElementById('transfer-itens-container').innerHTML = '';
+            criarLinhaItemTransferencia();
+        }).catch(err => {
+            console.error('Erro ao transferir estoque:', err);
+            showToast('Não foi possível concluir a transferência. Verifique sua conexão.', 'danger');
+        }).finally(() => {
+            btn.disabled = false;
+            btn.textContent = '🔁 Transferir Estoque';
+        });
+    });
+
+    function renderHistoricoTransferencias() {
+        const lista = document.getElementById('transfer-hist-lista');
+        const empty = document.getElementById('transfer-hist-empty');
+        if (!lista) return;
+        lista.innerHTML = '';
+        // Mostra só as transferências que saíram ou foram recebidas no local deste aparelho.
+        const entradas = Object.values(allLoadedTransferencias)
+            .filter(t => t.origemKey === localAtualKey || t.destinoKey === localAtualKey)
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+            .slice(0, 40);
+        if (entradas.length === 0) {
+            empty.style.display = 'block';
+            empty.textContent = localAtualKey ? 'Nenhuma transferência registrada para este local ainda.' : 'Selecione o local deste aparelho para ver o histórico.';
+            return;
+        }
+        empty.style.display = 'none';
+        entradas.forEach(t => {
+            // A data pode não ter sido gravada (ex: transferências feitas pelo sistema do PC antes desse
+            // ajuste). Nesse caso, calcula a data a partir do timestamp em vez de mostrar "---".
+            let dataFormatada = '---';
+            if (t.data) {
+                dataFormatada = t.data.split('-').reverse().join('/');
+            } else if (t.timestamp) {
+                dataFormatada = new Date(t.timestamp).toLocaleDateString('pt-BR');
+            }
+            // Suporta tanto o formato novo (itens: [...], transferência em massa) quanto o formato antigo
+            // (produtoKey/produtoNome/quantidade únicos) dos registros já existentes no banco.
+            const itensDoRegistro = Array.isArray(t.itens) ? t.itens : (t.produtoKey ? [{ produtoNome: t.produtoNome, quantidade: t.quantidade }] : []);
+            const linhasProdutos = itensDoRegistro.map(it => `
+                <div class="transfer-hist-top"><span>${it.produtoNome || 'Produto'}</span><span>${formatQuantidade(it.quantidade)} un.</span></div>
+            `).join('');
+            const card = document.createElement('div');
+            card.className = 'transfer-hist-card';
+            card.innerHTML = `
+                ${linhasProdutos}
+                <div class="transfer-hist-rota">${t.origemNome || '?'} → ${t.destinoNome || '?'} • ${dataFormatada}</div>
+            `;
+            lista.appendChild(card);
+        });
+    }
+
+
+    // ===================== FIM AJUSTE 3 =====================
+
+    document.getElementById('btn-nova-venda').addEventListener('click', () => abrirFormulario(null));
+
+    function abrirFormulario(saleKey) {
+        currentSaleId = saleKey;
+        const venda = saleKey ? allLoadedSales[saleKey] : null;
+
+        document.getElementById('header-title').textContent = venda ? '✏️ Editar Venda' : '➕ Nova Venda';
+        document.getElementById('header-subtitle').textContent = venda ? venda.clientName : 'Preencha os dados da venda';
+
+        document.getElementById('input-cliente').value = venda ? (venda.clientName || '').toUpperCase() : '';
+        selectedClienteKey = venda && venda.clientName
+            ? (Object.keys(allLoadedClientes).find(k => (allLoadedClientes[k].name || '').toLowerCase() === venda.clientName.toLowerCase()) || null)
+            : null;
+        document.getElementById('input-data-venda').value = venda ? venda.salesDate : hojeISO();
+        document.getElementById('input-data-vencimento').value = venda ? venda.salesDueDate : hojeISO();
+
+        document.getElementById('itens-container').innerHTML = '';
+        if (venda && venda.items && venda.items.length > 0) {
+            venda.items.forEach(it => criarLinhaItem(it.productKey, it.quantity, it.discountType || '$', it.discountValue || 0));
+        } else {
+            criarLinhaItem();
+        }
+
+        selecionarStatus(venda ? (venda.status || 'RASCUNHO') : 'RASCUNHO');
+        document.getElementById('btn-excluir').style.display = venda ? 'block' : 'none';
+
+        const btnSalvarReset = document.getElementById('btn-salvar');
+        btnSalvarReset.disabled = false;
+        btnSalvarReset.textContent = '💾 Salvar Venda';
+
+        pendingPagamento = null;
+        formularioBloqueado = !!(venda && venda.status === 'PAGO');
+        aplicarBloqueioFormulario();
+
+        recalcularTotal();
+        mostrarFormulario();
+    }
+
+    // Trava a edição de uma venda que já está PAGA (mesmo comportamento do site do PC: venda paga é
+    // travada para itens/cliente/datas, mas o seletor de status continua ativo para permitir reverter
+    // a venda de volta para Rascunho/Confirmada, assim como no site do computador).
+    function aplicarBloqueioFormulario() {
+        const desabilitar = formularioBloqueado;
+        document.getElementById('aviso-venda-paga').style.display = desabilitar ? 'block' : 'none';
+        document.getElementById('input-cliente').disabled = desabilitar;
+        document.getElementById('input-data-venda').disabled = desabilitar;
+        document.getElementById('input-data-vencimento').disabled = desabilitar;
+        document.getElementById('btn-add-item').style.display = desabilitar ? 'none' : 'block';
+        document.querySelectorAll('#itens-container .item-qtd, #itens-container .produto-select-btn, #itens-container .btn-remove-item, #itens-container .item-desconto-val, #itens-container .item-desconto-tipo').forEach(el => {
+            el.disabled = desabilitar;
+        });
+        document.getElementById('btn-salvar').style.display = desabilitar ? 'none' : 'block';
+    }
+
+    // Botão de voltar do cabeçalho (caixinha fixa no HTML): mostra apenas dentro do formulário
+    document.getElementById('btn-voltar-form').addEventListener('click', mostrarLista);
+
+    // ===== STATUS SELECTOR =====
+    function selecionarStatus(status) {
+        selectedStatus = status;
+        document.querySelectorAll('#status-selector .status-opt').forEach(btn => {
+            btn.classList.toggle('sel', btn.dataset.status === status);
+        });
+    }
+    document.querySelectorAll('#status-selector .status-opt').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const novoStatus = btn.dataset.status;
+
+            // Venda travada (já paga): o único uso do seletor aqui é reverter para Rascunho/Confirmada,
+            // igual ao site do computador. Tocar em "Pago" de novo não faz nada.
+            if (formularioBloqueado) {
+                if (novoStatus === 'PAGO') return;
+                solicitarReversaoVenda(novoStatus);
+                return;
+            }
+
+            if (novoStatus === 'PAGO') {
+                abrirModalPagamento(); // reabre o pop-up mesmo se "Pago" já estiver selecionado, para ajustar os valores
+                return;
+            }
+            pendingPagamento = null;
+            selecionarStatus(novoStatus);
+        });
+    });
+
+    // ===== REVERSÃO DE VENDA PAGA (MESMA LÓGICA DO SITE DO PC) =====
+    // Ao tocar em "Rascunho"/"Confirmada" com uma venda Paga aberta, pede confirmação e reverte tudo:
+    // remove os dados de pagamento/crédito, estorna o lançamento no Caixa e devolve o estoque se necessário.
+    function solicitarReversaoVenda(novoStatus) {
+        const venda = allLoadedSales[currentSaleId];
+        if (!venda) return;
+
+        const statusLabel = novoStatus === 'RASCUNHO' ? 'Rascunho' : 'Confirmada';
+        let explicacao = `Tem certeza que deseja reverter esta venda de "Pago" para "${statusLabel}"?\n\nAo confirmar:\n`;
+        explicacao += (novoStatus === 'RASCUNHO')
+            ? `• Os produtos desta venda voltarão para o estoque disponível.\n`
+            : `• O estoque continuará reservado/abatido (Confirmada também reserva estoque).\n`;
+        if ((venda.creditoGerado || 0) > 0) explicacao += `• O crédito de R$ ${venda.creditoGerado.toFixed(2)} gerado por esta venda será removido da conta do cliente.\n`;
+        if ((venda.creditoUsado || 0) > 0) explicacao += `• O crédito de R$ ${venda.creditoUsado.toFixed(2)} usado para pagar esta venda será devolvido para a conta do cliente.\n`;
+        if (venda.contaPagamentoNome && (venda.valorPago || 0) > 0) explicacao += `• O valor de R$ ${venda.valorPago.toFixed(2)} lançado na conta "${venda.contaPagamentoNome}" será estornado.\n`;
+        explicacao += `• A venda deixará de contar como paga e o formulário será desbloqueado para edição.`;
+
+        showConfirm(explicacao, 'warning', 'Reverter Venda Paga').then(ok => {
+            if (ok) reverterVendaPaga(novoStatus);
+        });
+    }
+
+    function reverterVendaPaga(novoStatus) {
+        const venda = allLoadedSales[currentSaleId];
+        if (!venda) return;
+
+        const finalizarReversao = () => {
+            formularioBloqueado = false;
+            aplicarBloqueioFormulario();
+            pendingPagamento = null;
+            selecionarStatus(novoStatus);
+            showToast('Venda revertida com sucesso. O formulário está desbloqueado para edição.', 'success');
+        };
+
+        // O saldo de crédito é sempre derivado do histórico de vendas (calcularCreditoCliente), então
+        // basta remover o status "PAGO" e os campos de crédito desta venda: o saldo do cliente se
+        // ajusta sozinho automaticamente, sem nenhum update manual em `clientes/`.
+        update(ref(db, `vendas/${currentSaleId}`), {
+            status: novoStatus, valorPago: null, creditoGerado: null, creditoUsado: null,
+            contaPagamentoKey: null, contaPagamentoNome: null, movimentacaoCaixaKey: null
+        }).then(() => {
+            // Devolve ao estoque (no mesmo local físico da venda) se ela voltou para Rascunho
+            // (Confirmada continua abatendo, então nada muda)
+            if (novoStatus === 'RASCUNHO' && venda.items) {
+                const localDaVenda = venda.localVendaKey || localAtualKey;
+                if (localDaVenda) {
+                    venda.items.forEach(item => {
+                        if (item.productKey && allLoadedProducts[item.productKey]) {
+                            aplicarDeltaEstoque(item.productKey, localDaVenda, item.quantity);
+                        }
+                    });
+                }
+            }
+
+            // Desfaz o lançamento de Caixa gerado por esta venda: remove a movimentação e devolve o
+            // saldo da conta ao valor de antes de a venda ter sido marcada como Paga.
+            if (venda.movimentacaoCaixaKey && venda.contaPagamentoKey && allLoadedContas[venda.contaPagamentoKey]) {
+                const saldoAtual = parseFloat(allLoadedContas[venda.contaPagamentoKey].saldo || 0);
+                const novoSaldo = parseFloat((saldoAtual - (venda.valorPago || 0)).toFixed(2));
+                Promise.all([
+                    remove(ref(db, `movimentacoesCaixa/${venda.movimentacaoCaixaKey}`)),
+                    update(ref(db, `contas/${venda.contaPagamentoKey}`), { saldo: novoSaldo })
+                ]).then(finalizarReversao);
+            } else {
+                finalizarReversao();
+            }
+        });
+    }
+
+
+    // ===== AUTOCOMPLETE / CRIAÇÃO RÁPIDA DE CLIENTE =====
+    const inputCliente = document.getElementById('input-cliente');
+    const clienteDropdown = document.getElementById('client-dropdown');
+
+    inputCliente.addEventListener('input', () => {
+        // Padroniza o nome do cliente sempre em maiúsculas, preservando a posição do cursor
+        const cursorPos = inputCliente.selectionStart;
+        const maiusculo = inputCliente.value.toUpperCase();
+        if (maiusculo !== inputCliente.value) {
+            inputCliente.value = maiusculo;
+            inputCliente.setSelectionRange(cursorPos, cursorPos);
+        }
+        selectedClienteKey = null; // qualquer edição manual invalida a seleção/associação anterior
+        inputCliente.classList.remove('campo-invalido');
+        document.getElementById('aviso-cliente-invalido').classList.remove('show');
+        renderClienteDropdown(inputCliente.value);
+    });
+    inputCliente.addEventListener('focus', () => renderClienteDropdown(inputCliente.value));
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.client-autocomplete-wrapper')) clienteDropdown.classList.remove('open');
+    });
+
+    function renderClienteDropdown(termo) {
+        const q = termo.trim().toLowerCase();
+        const matches = Object.entries(allLoadedClientes).filter(([k, c]) => (c.name || '').toLowerCase().includes(q));
+        clienteDropdown.innerHTML = '';
+
+        matches.slice(0, 30).forEach(([key, c]) => {
+            const item = document.createElement('div');
+            item.className = 'client-dropdown-item';
+            item.textContent = (c.name || '').toUpperCase();
+            item.addEventListener('click', () => {
+                inputCliente.value = (c.name || '').toUpperCase();
+                selectedClienteKey = key;
+                clienteDropdown.classList.remove('open');
+            });
+            clienteDropdown.appendChild(item);
+        });
+
+        const existeExato = matches.some(([k, c]) => (c.name || '').toLowerCase() === q);
+        if (q.length > 0 && !existeExato) {
+            const criar = document.createElement('div');
+            criar.className = 'client-dropdown-item create-new';
+            criar.textContent = `➕ Criar cliente "${termo.trim().toUpperCase()}"`;
+            criar.addEventListener('click', () => {
+                const nome = termo.trim().toUpperCase();
+                const novoRef = push(ref(db, 'clientes'));
+                set(novoRef, { name: nome }).then(() => {
+                    inputCliente.value = nome;
+                    selectedClienteKey = novoRef.key;
+                    clienteDropdown.classList.remove('open');
+                    showToast('Cliente cadastrado!', 'success');
+                });
+            });
+            clienteDropdown.appendChild(criar);
+        }
+
+        if (matches.length === 0 && q.length === 0) { clienteDropdown.classList.remove('open'); return; }
+        clienteDropdown.classList.add('open');
+    }
+
+    // ===== ITENS DA VENDA (SELEÇÃO DE PRODUTO VIA POPUP) =====
+    function textoProdutoBtn(productKey) {
+        const prod = allLoadedProducts[productKey];
+        if (!prod) return 'Selecione o produto...';
+        // AJUSTE: não mostra mais o nome do local nem a quantidade em estoque junto com o nome do
+        // produto neste campo — só o nome do produto mesmo.
+        return prod.name;
+    }
+
+    function criarLinhaItem(productKey = '', quantity = 1, discountType = '$', discountValue = 0) {
+        const row = document.createElement('div');
+        row.className = 'item-row';
+        row.dataset.productKey = productKey;
+        row.innerHTML = `
+            <button type="button" class="produto-select-btn ${productKey ? '' : 'placeholder'}">${textoProdutoBtn(productKey)}</button>
+            <div class="item-row-line1">
+                <div style="flex:1;">
+                    <label class="item-mini-label">Qtd.</label>
+                    <input type="number" class="item-qtd" min="1" value="${quantity}">
+                </div>
+                <div style="flex:1;">
+                    <label class="item-mini-label">Desconto</label>
+                    <div class="item-desconto-wrap">
+                        <input type="number" class="item-desconto-val" min="0" ${discountType === '%' ? 'max="100"' : ''} step="any" value="${discountValue}">
+                        <select class="item-desconto-tipo">
+                            <option value="$" ${discountType === '$' ? 'selected' : ''}>R$</option>
+                            <option value="%" ${discountType === '%' ? 'selected' : ''}>%</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="item-row-bottom">
+                <span class="item-subtotal">R$ 0,00</span>
+                <button type="button" class="btn-remove-item">✕</button>
+            </div>
+        `;
+        row.querySelector('.produto-select-btn').addEventListener('click', () => abrirModalProduto(row));
+        row.querySelector('.item-qtd').addEventListener('input', recalcularTotal);
+        row.querySelector('.item-desconto-val').addEventListener('input', () => {
+            const tipoEl = row.querySelector('.item-desconto-tipo');
+            const valEl = row.querySelector('.item-desconto-val');
+            if (tipoEl.value === '%' && parseFloat(valEl.value) > 100) valEl.value = 100;
+            recalcularTotal();
+        });
+        row.querySelector('.item-desconto-tipo').addEventListener('change', () => {
+            const tipoEl = row.querySelector('.item-desconto-tipo');
+            const valEl = row.querySelector('.item-desconto-val');
+            valEl.max = tipoEl.value === '%' ? '100' : '';
+            if (tipoEl.value === '%' && parseFloat(valEl.value) > 100) valEl.value = 100;
+            recalcularTotal();
+        });
+        row.querySelector('.btn-remove-item').addEventListener('click', () => { row.remove(); recalcularTotal(); });
+        document.getElementById('itens-container').appendChild(row);
+    }
+
+    document.getElementById('btn-add-item').addEventListener('click', () => criarLinhaItem());
+
+    function atualizarSelectsProdutoExistentes() {
+        document.querySelectorAll('#itens-container .item-row').forEach(row => {
+            const key = row.dataset.productKey;
+            if (key && allLoadedProducts[key]) {
+                row.querySelector('.produto-select-btn').textContent = textoProdutoBtn(key);
+            }
+        });
+        recalcularTotal();
+    }
+
+    // Calcula o subtotal líquido de cada item (preço x quantidade, menos o desconto em R$ ou %),
+    // exatamente igual à lógica de desconto por item do sistema do PC.
+    function recalcularTotal() {
+        let total = 0;
+        const localAtivoRecalc = (currentSaleId && allLoadedSales[currentSaleId]) ? (allLoadedSales[currentSaleId].localVendaKey || localAtualKey) : localAtualKey;
+        document.querySelectorAll('#itens-container .item-row').forEach(row => {
+            const prodKey = row.dataset.productKey;
+            const qtd = parseInt(row.querySelector('.item-qtd').value) || 0;
+            const prod = allLoadedProducts[prodKey];
+            const preco = getPrecoProdutoNoLocal(prod, localAtivoRecalc);
+            const sub = preco * qtd;
+
+            const dType = row.querySelector('.item-desconto-tipo').value;
+            const dVal = Math.min(parseFloat(row.querySelector('.item-desconto-val').value) || 0, dType === '%' ? 100 : Infinity);
+            const itemDisc = dType === '$' ? dVal : sub * (dVal / 100);
+            const subtotalLiquido = Math.max(0, sub - itemDisc);
+
+            row.querySelector('.item-subtotal').textContent = formatMoeda(subtotalLiquido);
+            total += subtotalLiquido;
+        });
+        document.getElementById('total-venda').textContent = formatMoeda(total);
+        return total;
+    }
+
+    // ===== POPUP DE SELEÇÃO DE PRODUTO =====
+    // Pode ser usado de duas formas: abrirModalProduto(row) preenche uma linha de item da venda,
+    // ou abrirModalProduto(callback) chama a função passada com a chave do produto escolhido
+    // (usado na aba Transferência, que não tem uma "linha" de venda).
+    let modalRowAtual = null;
+    let modalProdutoCallback = null;
+    let modalLocalRefKey = null; // local usado pra filtrar/ordenar o popup (normalmente localAtualKey; na Transferência, é o local de ORIGEM escolhido)
+    const produtoModalOverlay = document.getElementById('produto-modal-overlay');
+    const produtoModalList = document.getElementById('produto-modal-list');
+    const produtoModalSearch = document.getElementById('produto-modal-search');
+
+    // Ordenação da lista do popup: começa por "estoque" decrescente (maior estoque primeiro),
+    // e o usuário pode clicar em PRODUTO ou ESTOQUE pra trocar o critério/direção.
+    let produtoModalSortKey = 'estoque';
+    let produtoModalSortDir = 'desc';
+    function atualizarVisualColunasModalProduto() {
+        document.querySelectorAll('.modal-produto-col-btn').forEach(btn => {
+            const ativa = btn.dataset.sort === produtoModalSortKey;
+            btn.classList.toggle('ativo', ativa);
+            btn.querySelector('.arrow').textContent = ativa ? (produtoModalSortDir === 'desc' ? '▼' : '▲') : '▲▼';
+        });
+    }
+    document.querySelectorAll('.modal-produto-col-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const chave = btn.dataset.sort;
+            if (produtoModalSortKey === chave) {
+                produtoModalSortDir = produtoModalSortDir === 'desc' ? 'asc' : 'desc';
+            } else {
+                produtoModalSortKey = chave;
+                produtoModalSortDir = chave === 'estoque' ? 'desc' : 'asc'; // estoque começa do maior; nome começa A-Z
+            }
+            atualizarVisualColunasModalProduto();
+            renderModalProdutoLista(produtoModalSearch.value);
+        });
+    });
+
+    function abrirModalProduto(rowOuCallback, localRefKeyOverride) {
+        if (typeof rowOuCallback === 'function') {
+            modalRowAtual = null;
+            modalProdutoCallback = rowOuCallback;
+        } else {
+            modalRowAtual = rowOuCallback;
+            modalProdutoCallback = null;
+        }
+        modalLocalRefKey = localRefKeyOverride !== undefined ? localRefKeyOverride : localAtualKey;
+        produtoModalSearch.value = '';
+        produtoModalSortKey = 'estoque';
+        produtoModalSortDir = 'desc';
+        atualizarVisualColunasModalProduto();
+        renderModalProdutoLista('');
+        produtoModalOverlay.classList.add('show');
+        setTimeout(() => produtoModalSearch.focus(), 150);
+    }
+    function fecharModalProduto() {
+        produtoModalOverlay.classList.remove('show');
+        modalRowAtual = null;
+        modalProdutoCallback = null;
+    }
+    produtoModalOverlay.addEventListener('click', (e) => { if (e.target === produtoModalOverlay) fecharModalProduto(); });
+    produtoModalSearch.addEventListener('input', () => renderModalProdutoLista(produtoModalSearch.value));
+
+    // ===== POP-UP DE CONFIRMAÇÃO DE PAGAMENTO (AO MARCAR VENDA COMO "PAGO") =====
+    function abrirModalPagamento() {
+        const total = recalcularTotal();
+        const clientNameRaw = document.getElementById('input-cliente').value.trim();
+
+        // AJUSTE: cliente não é mais obrigatório pra marcar como Pago - mesmo critério do PC
+        // (getClienteAtualDaVenda): sem nome ou sem cadastro correspondente, crédito disponível é 0;
+        // só busca o crédito real quando o nome bate com um cliente já cadastrado.
+        let clienteKey = selectedClienteKey;
+        if (clienteKey && (!allLoadedClientes[clienteKey] || (allLoadedClientes[clienteKey].name || '').toLowerCase() !== clientNameRaw.toLowerCase())) {
+            clienteKey = null;
+        }
+        if (!clienteKey && clientNameRaw) {
+            clienteKey = Object.keys(allLoadedClientes).find(k => (allLoadedClientes[k].name || '').toLowerCase() === clientNameRaw.toLowerCase()) || null;
+        }
+
+        const nomeCliente = clienteKey ? allLoadedClientes[clienteKey].name : (clientNameRaw || 'CONSUMIDOR FINAL');
+        const credito = clienteKey ? calcularCreditoCliente(nomeCliente) : 0;
+
+        const overlay = document.getElementById('pgto-overlay');
+        overlay.dataset.total = total;
+        overlay.dataset.clienteKey = clienteKey || '';
+        overlay.dataset.creditoDisponivel = credito;
+
+        document.getElementById('pgto-total-venda').textContent = formatMoeda(total);
+        document.getElementById('pgto-credito-disponivel').textContent = formatMoeda(credito);
+        document.getElementById('pgto-credito-row').style.display = credito > 0 ? 'flex' : 'none';
+
+        const usarCreditoWrapper = document.getElementById('pgto-usar-credito-wrapper');
+        const checkbox = document.getElementById('pgto-usar-credito-checkbox');
+        const creditoInput = document.getElementById('pgto-credito-usar-valor');
+        usarCreditoWrapper.style.display = credito > 0 ? 'block' : 'none';
+        checkbox.checked = !!(pendingPagamento && pendingPagamento.creditoUsado > 0);
+        creditoInput.style.display = checkbox.checked ? 'block' : 'none';
+        creditoInput.max = credito;
+        creditoInput.value = (pendingPagamento && pendingPagamento.creditoUsado > 0) ? pendingPagamento.creditoUsado.toFixed(2) : '';
+
+        document.getElementById('pgto-valor-pago').value = pendingPagamento ? pendingPagamento.valorPago.toFixed(2) : total.toFixed(2);
+
+        const selectConta = document.getElementById('pgto-conta-recebimento');
+        selectConta.innerHTML = '<option value="">-- Selecione a conta --</option>';
+        Object.keys(allLoadedContas).forEach(key => {
+            const opt = document.createElement('option');
+            opt.value = key; opt.textContent = allLoadedContas[key].name;
+            selectConta.appendChild(opt);
+        });
+        selectConta.value = pendingPagamento ? (pendingPagamento.contaKey || '') : '';
+
+        atualizarResumoPagamentoModal();
+        overlay.classList.add('show');
+    }
+
+    function atualizarResumoPagamentoModal() {
+        const overlay = document.getElementById('pgto-overlay');
+        const total = parseFloat(overlay.dataset.total) || 0;
+        const creditoDisponivel = parseFloat(overlay.dataset.creditoDisponivel) || 0;
+        const checkbox = document.getElementById('pgto-usar-credito-checkbox');
+
+        let creditoUsado = 0;
+        if (checkbox.checked) {
+            creditoUsado = parseFloat(document.getElementById('pgto-credito-usar-valor').value) || 0;
+            creditoUsado = Math.min(Math.max(0, creditoUsado), creditoDisponivel);
+        }
+        const valorPago = parseFloat(document.getElementById('pgto-valor-pago').value) || 0;
+        const totalCoberto = creditoUsado + valorPago;
+        const creditoGerado = Math.max(0, totalCoberto - total);
+        const falta = Math.max(0, total - totalCoberto);
+
+        document.getElementById('pgto-total-coberto').textContent = formatMoeda(totalCoberto);
+        document.getElementById('pgto-row-credito-gerado').style.display = creditoGerado > 0 ? 'flex' : 'none';
+        document.getElementById('pgto-credito-gerado').textContent = formatMoeda(creditoGerado);
+        document.getElementById('pgto-row-faltando').style.display = falta > 0 ? 'flex' : 'none';
+        document.getElementById('pgto-valor-faltando').textContent = formatMoeda(falta);
+
+        // O campo de conta só faz sentido quando existe dinheiro novo entrando (crédito usado não é dinheiro novo)
+        document.getElementById('pgto-conta-wrapper').style.display = valorPago > 0 ? 'block' : 'none';
+        document.getElementById('btn-confirmar-pagamento').disabled = (total > 0 && falta > 0.001);
+    }
+
+    document.getElementById('pgto-usar-credito-checkbox').addEventListener('change', (e) => {
+        document.getElementById('pgto-credito-usar-valor').style.display = e.target.checked ? 'block' : 'none';
+        if (!e.target.checked) document.getElementById('pgto-credito-usar-valor').value = '';
+        atualizarResumoPagamentoModal();
+    });
+    document.getElementById('pgto-credito-usar-valor').addEventListener('input', atualizarResumoPagamentoModal);
+    document.getElementById('pgto-valor-pago').addEventListener('input', atualizarResumoPagamentoModal);
+
+    document.getElementById('btn-cancelar-pagamento').addEventListener('click', () => {
+        document.getElementById('pgto-overlay').classList.remove('show');
+    });
+    document.getElementById('pgto-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'pgto-overlay') document.getElementById('pgto-overlay').classList.remove('show');
+    });
+
+    document.getElementById('btn-confirmar-pagamento').addEventListener('click', () => {
+        const overlay = document.getElementById('pgto-overlay');
+        const total = parseFloat(overlay.dataset.total) || 0;
+        const creditoDisponivel = parseFloat(overlay.dataset.creditoDisponivel) || 0;
+        const clienteKey = overlay.dataset.clienteKey || null;
+        const checkbox = document.getElementById('pgto-usar-credito-checkbox');
+
+        let creditoUsado = 0;
+        if (checkbox.checked) {
+            creditoUsado = parseFloat(document.getElementById('pgto-credito-usar-valor').value) || 0;
+            creditoUsado = Math.min(Math.max(0, creditoUsado), creditoDisponivel);
+        }
+        const valorPago = parseFloat(document.getElementById('pgto-valor-pago').value) || 0;
+        const totalCoberto = creditoUsado + valorPago;
+
+        if (totalCoberto < total - 0.001) {
+            showToast('O valor pago somado ao crédito usado ainda não cobre o total da venda.', 'warning');
+            return;
+        }
+
+        const contaKey = document.getElementById('pgto-conta-recebimento').value || null;
+        if (valorPago > 0 && !contaKey) {
+            if (Object.keys(allLoadedContas).length === 0) {
+                showToast('Não há nenhuma conta cadastrada no sistema. Cadastre uma conta no site do computador antes de confirmar.', 'warning');
+            } else {
+                showToast('Selecione em qual conta este valor foi recebido.', 'warning');
+            }
+            return;
+        }
+        const contaNome = contaKey ? allLoadedContas[contaKey].name : null;
+
+        pendingPagamento = {
+            valorPago: parseFloat(valorPago.toFixed(2)),
+            creditoUsado: parseFloat(creditoUsado.toFixed(2)),
+            creditoGerado: parseFloat(Math.max(0, totalCoberto - total).toFixed(2)),
+            clienteKey, contaKey, contaNome
+        };
+
+        overlay.classList.remove('show');
+        selecionarStatus('PAGO');
+    });
+
+    function renderModalProdutoLista(termo) {
+        const q = termo.trim().toLowerCase();
+        const getEstoqueExibido = (p) => modalLocalRefKey ? getEstoqueNoLocal(p, modalLocalRefKey) : getEstoqueTotal(p);
+
+        let entradas = Object.entries(allLoadedProducts)
+            .filter(([key, p]) => (p.name || '').toLowerCase().includes(q))
+            .filter(([key, p]) => getEstoqueExibido(p) > 0); // esconde produtos sem estoque disponível
+
+        entradas.sort((a, b) => {
+            const [, pa] = a, [, pb] = b;
+            let cmp;
+            if (produtoModalSortKey === 'estoque') {
+                cmp = getEstoqueExibido(pa) - getEstoqueExibido(pb);
+            } else {
+                cmp = (pa.name || '').localeCompare(pb.name || '');
+            }
+            return produtoModalSortDir === 'desc' ? -cmp : cmp;
+        });
+
+        produtoModalList.innerHTML = '';
+        if (entradas.length === 0) {
+            produtoModalList.innerHTML = '<div class="modal-empty">Nenhum produto com estoque disponível.</div>';
+            return;
+        }
+        entradas.forEach(([key, p]) => {
+            const item = document.createElement('div');
+            item.className = 'modal-item';
+            const rotuloEstoque = modalLocalRefKey ? `${nomeDoLocal(modalLocalRefKey)}: ${formatQuantidade(getEstoqueNoLocal(p, modalLocalRefKey))}` : `total: ${formatQuantidade(getEstoqueTotal(p))}`;
+            item.innerHTML = `<span>${p.name}</span><span class="estoque-badge">${rotuloEstoque}</span>`;
+            item.addEventListener('click', () => {
+                if (modalRowAtual) {
+                    modalRowAtual.dataset.productKey = key;
+                    const btn = modalRowAtual.querySelector('.produto-select-btn');
+                    btn.textContent = textoProdutoBtn(key);
+                    btn.classList.remove('placeholder');
+                    recalcularTotal();
+                } else if (modalProdutoCallback) {
+                    modalProdutoCallback(key);
+                }
+                fecharModalProduto();
+            });
+            produtoModalList.appendChild(item);
+        });
+    }
+
+    // ===== SALVAR VENDA =====
+    document.getElementById('btn-salvar').addEventListener('click', () => {
+        // AJUSTE: se o campo Cliente estiver vazio, avisa antes de salvar que o nome registrado será
+        // "CONSUMIDOR FINAL" e só prossegue se o usuário confirmar. Com nome preenchido, salva direto.
+        const clientNameDigitado = document.getElementById('input-cliente').value.trim();
+        if (!clientNameDigitado) {
+            showConfirm('Nenhum nome de cliente foi informado. Esta venda será registrada como "CONSUMIDOR FINAL". Deseja continuar?', 'warning', 'Cliente não informado').then(ok => {
+                if (ok) prosseguirSalvarVenda();
+            });
+            return;
+        }
+        prosseguirSalvarVenda();
+    });
+
+    function prosseguirSalvarVenda() {
+      const btnSalvarEl = document.getElementById('btn-salvar');
+      try {
+        // Cliente não é obrigatório - campo em branco vira "CONSUMIDOR FINAL" (com aviso prévio, acima) e
+        // nome digitado sem cadastro correspondente é aceito como texto livre, exatamente como já
+        // funciona no PC. O cadastro automático do cliente (se ainda não existir) só acontece depois, se
+        // a venda gerar crédito pra ele - mesma regra usada no PC.
+        const clientNameRaw = document.getElementById('input-cliente').value.trim();
+        const clientName = clientNameRaw || 'CONSUMIDOR FINAL';
+        inputCliente.classList.remove('campo-invalido');
+        document.getElementById('aviso-cliente-invalido').classList.remove('show');
+
+        const salesDate = document.getElementById('input-data-venda').value;
+        const salesDueDate = document.getElementById('input-data-vencimento').value;
+
+        if (!salesDate || !salesDueDate) { showToast('Informe as duas datas da venda.', 'warning'); return; }
+
+        const rows = document.querySelectorAll('#itens-container .item-row');
+        if (rows.length === 0) { showToast('Adicione pelo menos um produto.', 'warning'); return; }
+
+        // Local (físico) de onde esta venda debita/credita estoque. Numa venda nova é sempre o local
+        // deste aparelho; numa venda existente sendo editada, mantém o mesmo local que já estava
+        // registrado nela (editar uma venda não move estoque de local sozinho — isso é feito na
+        // aba Transferência).
+        let localVendaKeyAtual;
+        if (currentSaleId && allLoadedSales[currentSaleId]) {
+            localVendaKeyAtual = allLoadedSales[currentSaleId].localVendaKey || localAtualKey;
+        } else {
+            localVendaKeyAtual = localAtualKey;
+        }
+        if (!localVendaKeyAtual) {
+            showToast('Selecione o local deste dispositivo antes de registrar uma venda.', 'warning');
+            abrirModalLocal(true);
+            return;
+        }
+
+        // Status/itens anteriores (para diff de estoque quando estamos editando)
+        let oldStatus = 'RASCUNHO', oldItems = [];
+        if (currentSaleId && allLoadedSales[currentSaleId]) {
+            oldStatus = allLoadedSales[currentSaleId].status || 'RASCUNHO';
+            oldItems = allLoadedSales[currentSaleId].items || [];
+        }
+        const oldAbatia = (oldStatus === 'CONFIRMADA' || oldStatus === 'PAGO');
+        if (oldAbatia) {
+            oldItems.forEach(it => ajustarEstoqueMemoria(it.productKey, localVendaKeyAtual, it.quantity));
+        }
+        const restaurarEstoqueEmMemoria = () => {
+            if (oldAbatia) oldItems.forEach(it => ajustarEstoqueMemoria(it.productKey, localVendaKeyAtual, -it.quantity));
+        };
+
+        const novoAbate = (selectedStatus === 'CONFIRMADA' || selectedStatus === 'PAGO');
+        const estoqueRestanteTemp = {};
+        const checkoutItems = [];
+        let totalValue = 0, totalQuantity = 0, totalProfit = 0;
+
+        for (const row of rows) {
+            const prodKey = row.dataset.productKey;
+            const qtd = parseInt(row.querySelector('.item-qtd').value) || 0;
+            if (!prodKey) { showToast('Selecione o produto em todas as linhas.', 'warning'); restaurarEstoqueEmMemoria(); return; }
+            if (qtd < 1) { showToast('Informe uma quantidade válida (mínimo 1).', 'warning'); restaurarEstoqueEmMemoria(); return; }
+
+            const prod = allLoadedProducts[prodKey];
+            if (!prod) {
+                // Produto não encontrado no catálogo (ex: excluído, ou ainda não carregou). Sem essa
+                // checagem o clique quebrava aqui em silêncio e o botão parecia não fazer nada.
+                showToast('Um dos produtos desta venda não foi encontrado no catálogo. Toque no item e selecione o produto novamente antes de salvar.', 'warning');
+                restaurarEstoqueEmMemoria();
+                return;
+            }
+            if (novoAbate) {
+                if (!(prodKey in estoqueRestanteTemp)) estoqueRestanteTemp[prodKey] = getEstoqueNoLocal(prod, localVendaKeyAtual);
+                if (estoqueRestanteTemp[prodKey] < qtd) {
+                    showToast(`Estoque insuficiente em ${nomeDoLocal(localVendaKeyAtual)}: ${prod.name}. Disponível: ${formatQuantidade(estoqueRestanteTemp[prodKey])} un.`, 'warning');
+                    restaurarEstoqueEmMemoria();
+                    return;
+                }
+                estoqueRestanteTemp[prodKey] -= qtd;
+            }
+
+            const preco = getPrecoProdutoNoLocal(prod, localVendaKeyAtual);
+            const sub = preco * qtd;
+            const dType = row.querySelector('.item-desconto-tipo').value;
+            const dVal = Math.min(parseFloat(row.querySelector('.item-desconto-val').value) || 0, dType === '%' ? 100 : Infinity);
+            const itemDisc = dType === '$' ? dVal : sub * (dVal / 100);
+            const subtotal = Math.max(0, sub - itemDisc);
+            // CORREÇÃO DE BUG: faltava calcular o lucro do item (totalProfit nunca era salvo na venda,
+            // zerando o "Lucro Bruto" do dashboard do PC para vendas feitas pelo mobile).
+            const costBase = getCustoEfetivoProduto(prod);
+            totalValue += subtotal;
+            totalProfit += subtotal - (costBase * qtd);
+            totalQuantity += qtd;
+            checkoutItems.push({
+                productKey: prodKey, productName: prod.name, quantity: qtd, sellingPrice: preco,
+                discountType: dType, discountValue: dVal, totalItemNet: subtotal
+            });
+        }
+
+        // Se a venda está sendo marcada como PAGO, revalida se o pagamento confirmado no pop-up ainda cobre o total atual
+        let valorPago = 0, creditoUsado = 0, creditoGerado = 0, contaPagamentoKey = null, contaPagamentoNome = null;
+        if (selectedStatus === 'PAGO') {
+            if (!pendingPagamento) {
+                showToast('Toque em "Pago" para confirmar os valores do pagamento antes de salvar.', 'warning');
+                restaurarEstoqueEmMemoria();
+                return;
+            }
+            valorPago = pendingPagamento.valorPago;
+            creditoUsado = pendingPagamento.creditoUsado;
+            const totalCoberto = valorPago + creditoUsado;
+            if (totalCoberto < totalValue - 0.001) {
+                showToast('O total da venda mudou depois da confirmação do pagamento. Toque em "Pago" novamente para reconfirmar.', 'warning');
+                restaurarEstoqueEmMemoria();
+                return;
+            }
+            creditoGerado = parseFloat(Math.max(0, totalCoberto - totalValue).toFixed(2));
+
+            if (valorPago > 0) {
+                if (!pendingPagamento.contaKey || !allLoadedContas[pendingPagamento.contaKey]) {
+                    showToast('Selecione novamente a conta de recebimento. Toque em "Pago" para reconfirmar.', 'warning');
+                    restaurarEstoqueEmMemoria();
+                    return;
+                }
+                contaPagamentoKey = pendingPagamento.contaKey;
+                contaPagamentoNome = allLoadedContas[contaPagamentoKey].name;
+            }
+        }
+
+        // A partir daqui a venda já passou por todas as validações e vai começar a gravar no
+        // Firebase: trava o botão e muda o texto pra dar feedback imediato de que o toque
+        // funcionou (evita a sensação de "delay"/travamento e impede clique duplo).
+        btnSalvarEl.disabled = true;
+        btnSalvarEl.textContent = '💾 Salvando...';
+        const restaurarBotaoSalvar = () => { btnSalvarEl.disabled = false; btnSalvarEl.textContent = '💾 Salvar Venda'; };
+
+        // Desfaz a simulação em memória feita lá em cima (serviu só para a pré-validação visual) - a
+        // baixa real agora acontece por transação atômica direto no servidor (ver mais abaixo), então o
+        // cache local não deve ficar com esse ajuste "solto" antes da transação confirmar.
+        restaurarEstoqueEmMemoria();
+
+        // Calcula o delta líquido de estoque por produto (devolve o que a venda antiga tinha baixado +
+        // desconta o que a venda nova vai baixar).
+        const deltaPorProdutoVenda = {};
+        if (oldAbatia) {
+            oldItems.forEach(it => { deltaPorProdutoVenda[it.productKey] = (deltaPorProdutoVenda[it.productKey] || 0) + it.quantity; });
+        }
+        if (novoAbate) {
+            checkoutItems.forEach(item => { deltaPorProdutoVenda[item.productKey] = (deltaPorProdutoVenda[item.productKey] || 0) - item.quantity; });
+        }
+
+        // Aplica a baixa/devolução de estoque de forma ATÔMICA (transação no Firebase), o que protege
+        // contra duas vendas simultâneas em dispositivos diferentes descontando a mesma unidade duas
+        // vezes (mais provável no totem de autoatendimento, mas também protege PC+mobile no mesmo local).
+        // Só prossegue e grava a venda depois que o estoque for confirmado com sucesso.
+        aplicarDeltasEstoqueAtomico(deltaPorProdutoVenda, localVendaKeyAtual).then(() => {
+        btnSalvarEl.textContent = '💾 Salvando...';
+        const payload = {
+            clientName, salesDate, salesDueDate, status: selectedStatus,
+            items: checkoutItems, totalValue, totalProfit, quantity: totalQuantity, timestamp: Date.now(),
+            localVendaKey: localVendaKeyAtual, localVendaNome: nomeDoLocal(localVendaKeyAtual)
+        };
+        if (selectedStatus === 'PAGO') {
+            payload.valorPago = valorPago;
+            payload.creditoUsado = creditoUsado;
+            payload.creditoGerado = creditoGerado;
+            if (contaPagamentoKey) {
+                payload.contaPagamentoKey = contaPagamentoKey;
+                payload.contaPagamentoNome = contaPagamentoNome;
+            }
+        }
+
+        const targetRef = currentSaleId ? ref(db, `vendas/${currentSaleId}`) : push(ref(db, 'vendas'));
+
+        // Se há dinheiro novo entrando numa conta, prepara o lançamento no Caixa já com a chave gerada
+        let movRefCaixa = null;
+        if (contaPagamentoKey) {
+            movRefCaixa = push(ref(db, 'movimentacoesCaixa'));
+            payload.movimentacaoCaixaKey = movRefCaixa.key;
+        }
+
+        set(targetRef, payload).then(() => {
+            const finalizar = () => {
+                pendingPagamento = null;
+                restaurarBotaoSalvar();
+                showToast(currentSaleId ? 'Venda atualizada!' : 'Venda registrada com sucesso!', 'success');
+                mostrarLista();
+            };
+
+            // Lança a entrada no Caixa e soma o valor pago ao saldo da conta escolhida
+            const finalizarComCaixa = () => {
+                if (!contaPagamentoKey) { finalizar(); return; }
+                const saldoAtual = parseFloat(allLoadedContas[contaPagamentoKey].saldo || 0);
+                const novoSaldo = parseFloat((saldoAtual + valorPago).toFixed(2));
+                Promise.all([
+                    set(movRefCaixa, {
+                        contaKey: contaPagamentoKey, contaNome: contaPagamentoNome, tipo: 'entrada',
+                        valor: valorPago, descricao: `Recebimento da venda de ${clientName}`,
+                        data: salesDate, timestamp: Date.now()
+                    }),
+                    update(ref(db, `contas/${contaPagamentoKey}`), { saldo: novoSaldo })
+                ]).then(finalizar).catch(err => {
+                    console.error('Erro ao lançar movimentação de caixa:', err);
+                    restaurarBotaoSalvar();
+                    showToast('A venda foi salva, mas houve falha ao lançar no Caixa: ' + (err.message || 'verifique sua conexão.'), 'danger');
+                    mostrarLista();
+                });
+            };
+
+            // AJUSTE: agora que o nome do cliente pode ser texto livre (não precisa mais estar
+            // pré-cadastrado), cria o cadastro automaticamente quando a venda gera crédito pra ele -
+            // mesmo critério já usado no PC. Vendas de CONSUMIDOR FINAL ou sem crédito não criam cadastro.
+            const clienteKeyExistente = Object.keys(allLoadedClientes).find(k => (allLoadedClientes[k].name || '').toLowerCase() === clientName.toLowerCase());
+            if (!clienteKeyExistente && creditoGerado > creditoUsado) {
+                const novoClienteRef = push(ref(db, 'clientes'));
+                set(novoClienteRef, { name: clientName }).then(finalizarComCaixa);
+            } else {
+                finalizarComCaixa();
+            }
+        }).catch(err => {
+            console.error('Erro ao salvar venda no Firebase:', err);
+            restaurarBotaoSalvar();
+            // AJUSTE 5: se o motivo foi falta de conexão (não um erro de dados), marca para reenviar
+            // sozinho assim que a internet voltar, em vez de só pedir pro usuário tentar de novo.
+            if (!navigator.onLine) {
+                vendaPendenteReenvio = true;
+                showToast('Sem conexão. Esta venda será enviada automaticamente assim que a internet voltar.', 'warning');
+            } else {
+                showToast('Não foi possível salvar a venda. Verifique sua conexão com a internet e tente novamente. (' + (err.message || err.code || 'erro desconhecido') + ')', 'danger');
+            }
+        });
+        }).catch(err => {
+            restaurarBotaoSalvar();
+            if (err && err.code === 'ESTOQUE_INSUFICIENTE') {
+                showToast(`Não foi possível concluir a venda: o estoque de ${err.produtos.join(', ')} em ${nomeDoLocal(localVendaKeyAtual)} mudou (provavelmente outra venda ao mesmo tempo em outro dispositivo) e não é mais suficiente. Reveja as quantidades e tente novamente.`, 'warning');
+            } else {
+                console.error('Erro ao ajustar estoque da venda:', err);
+                showToast('Não foi possível ajustar o estoque desta venda. Verifique sua conexão e tente novamente.', 'danger');
+            }
+        });
+      } catch (err) {
+        // Rede de segurança: qualquer erro inesperado agora mostra um aviso e destrava o botão,
+        // em vez de deixar o clique morrer em silêncio.
+        console.error('Erro inesperado ao salvar venda:', err);
+        btnSalvarEl.disabled = false;
+        btnSalvarEl.textContent = '💾 Salvar Venda';
+        showToast('Não foi possível salvar a venda por um erro inesperado. Verifique os produtos selecionados e tente novamente. (' + (err.message || 'erro desconhecido') + ')', 'danger');
+      }
+    }
+
+    // ===== EXCLUIR VENDA =====
+    document.getElementById('btn-excluir').addEventListener('click', () => {
+        if (!currentSaleId || !allLoadedSales[currentSaleId]) return;
+        const venda = allLoadedSales[currentSaleId];
+        const status = venda.status || 'RASCUNHO';
+
+        if (status === 'PAGO') { showToast('Vendas com status PAGO não podem ser excluídas.', 'danger'); return; }
+
+        showConfirm(`Excluir permanentemente a venda de ${venda.clientName || 'CONSUMIDOR FINAL'}?`, 'danger', 'Excluir Venda').then(ok => {
+            if (!ok) return;
+            const promessas = [remove(ref(db, `vendas/${currentSaleId}`))];
+            if (status === 'CONFIRMADA') {
+                // Devolve o estoque para o mesmo local físico de onde a venda originalmente descontou.
+                // Vendas antigas (de antes deste recurso) não têm localVendaKey; nesse caso, usa o local
+                // deste aparelho como melhor alternativa disponível.
+                const localDaVenda = venda.localVendaKey || localAtualKey;
+                (venda.items || []).forEach(it => {
+                    if (allLoadedProducts[it.productKey] && localDaVenda) {
+                        promessas.push(aplicarDeltaEstoqueTransacao(it.productKey, localDaVenda, it.quantity));
+                    }
+                });
+            }
+            Promise.all(promessas).then(() => { showToast('Venda excluída.', 'success'); mostrarLista(); }).catch(err => {
+                console.error('Erro ao excluir venda:', err);
+                showToast('Não foi possível excluir a venda. Verifique sua conexão. (' + (err.message || err.code || 'erro desconhecido') + ')', 'danger');
+            });
+        });
+    });
+
+    mostrarLista();
+</script>
+</body>
+</html>
