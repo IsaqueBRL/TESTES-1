@@ -8662,7 +8662,13 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
         document.getElementById('rapido-fornecedor-cnpj').value = cnpjDigitado;
         // Se o CNPJ veio de uma nota importada em PDF, já sugere a Razão Social dela como nome
         document.getElementById('rapido-fornecedor-nome').value = notaFiscalImportadaAtual ? (notaFiscalImportadaAtual.razaoSocial || '') : '';
-        document.getElementById('modal-cadastro-rapido-fornecedor').style.display = 'flex';
+        const modalCadastroRapido = document.getElementById('modal-cadastro-rapido-fornecedor');
+        // Garante (via JS, não só via CSS) que este pop-up sempre fique por cima de qualquer outro
+        // modal que já esteja aberto por trás dele (ex: "Novo Pedido de Compra" na Aba 8) - estilo
+        // inline tem prioridade sobre o CSS do arquivo, então funciona mesmo que o style.css do
+        // navegador esteja em cache de uma versão anterior.
+        modalCadastroRapido.style.zIndex = '2000';
+        modalCadastroRapido.style.display = 'flex';
         setTimeout(() => document.getElementById('rapido-fornecedor-nome').focus(), 50);
     }
 

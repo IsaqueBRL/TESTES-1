@@ -781,6 +781,12 @@
 
         /* MODAIS / POPUPS */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center; z-index: 1000; }
+        /* Este pop-up pode ser aberto por cima de OUTRO modal já aberto (ex: dentro do "Novo Pedido de
+           Compra" da Aba 8, ao digitar um CNPJ não cadastrado) - por padrão ele ficaria empilhado
+           embaixo do modal que veio depois dele no HTML (mesmo z-index = quem está depois no código
+           fica visualmente por cima). Um z-index bem mais alto garante que ele sempre apareça no topo,
+           independente de qual modal já estava aberto por trás (reforçado também via JS ao abrir).*/
+        #modal-cadastro-rapido-fornecedor { z-index: 2000 !important; }
         .modal-content { background-color: var(--bg-surface); padding: 25px; border-radius: 3px; width: 100%; max-width: 550px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
         /* MODAL DE DETALHE DO CLIENTE (ABA 5) PODE FICAR ALTO - GARANTE ROLAGEM INTERNA SEM CORTAR O CABEÇALHO/BOTÃO DE FECHAR */
         #modal-detalhe-cliente .modal-content { max-height: 88vh; overflow-y: auto; }
@@ -795,7 +801,11 @@
         #modal-nova-compra .modal-content { max-height: 96vh; overflow-y: auto; max-width: 99vw; width: 1850px; }
         #modal-nova-compra .modal-header { position: sticky; top: -25px; background: var(--bg-surface); padding-top: 25px; margin-top: -25px; z-index: 5; }
         #modal-detalhe-compra .modal-content { max-height: 92vh; overflow-y: auto; max-width: 96vw; width: 1100px; }
-        #modal-novo-pedido-compra .modal-content { max-height: 96vh; overflow-y: auto; max-width: 99vw; width: 1850px; }
+        #modal-novo-pedido-compra .modal-content { max-height: 96vh; min-height: 94vh; overflow-y: auto; max-width: 99vw; width: 1850px; display: flex; flex-direction: column; }
+        /* Distribui as seções do formulário (fornecedor/datas, itens, observações/totais, botão de
+           salvar) ao longo de toda a altura do modal, em vez de ficarem todas grudadas no topo com um
+           vão vazio embaixo quando o pedido tem poucos itens. */
+        #modal-novo-pedido-compra form { display: flex; flex-direction: column; flex: 1 1 auto; justify-content: space-between; gap: 18px; }
         #modal-novo-orcamento .modal-content { max-height: 94vh; overflow-y: auto; max-width: 94vw; width: 760px; }
         #modal-novo-pedido-compra .modal-header { position: sticky; top: -25px; background: var(--bg-surface); padding-top: 25px; margin-top: -25px; z-index: 5; }
         /* Bloco de informações no canto superior direito do modal de Pedido de Compra (Nº, datas),
