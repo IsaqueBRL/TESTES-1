@@ -2946,7 +2946,8 @@
                     <table id="pedido-compra-itens-table">
                         <thead>
                             <tr>
-                                <th style="min-width:380px;">DESCRIÇÃO</th>
+                                <th style="width:70px; min-width:70px;">CÓD.</th>
+                                <th style="min-width:340px;">DESCRIÇÃO</th>
                                 <th style="min-width:130px;">CÓDIGO DE BARRAS</th>
                                 <th style="width:85px; min-width:85px;">VALOR UNIT.</th>
                                 <th style="width:70px; min-width:70px;">QTD.</th>
@@ -2979,6 +2980,10 @@
                         <input type="number" id="pedido-compra-desconto-valor" min="0" step="any" value="0" style="width:100px; margin:0; text-align:right;">
                     </div>
                     <div style="text-align:right;">
+                        <span style="font-size:8.5pt; color:var(--text-muted); display:block;" title="Somado ao total do pedido, mas não é dividido entre os itens - o valor unitário de cada produto continua sendo só o preço dele mesmo.">FRETE R$</span>
+                        <input type="number" id="pedido-compra-frete" min="0" step="any" value="0" style="width:100px; margin:0; text-align:right;">
+                    </div>
+                    <div style="text-align:right;">
                         <span style="font-size:8.5pt; color:var(--text-muted); display:block;">TOTAL LÍQUIDO</span>
                         <strong id="pedido-compra-total-liquido" style="font-size:14pt; color:var(--color-primary);">R$ 0,00</strong>
                     </div>
@@ -3008,6 +3013,7 @@
         <div id="detalhe-pedido-totais-wrap" style="display:none; gap:24px; flex-wrap:wrap; margin-bottom:14px;">
             <div><span style="font-size:9pt; color:var(--text-muted);">Total Bruto</span><br><strong id="detalhe-pedido-valor-bruto">R$ 0,00</strong></div>
             <div><span style="font-size:9pt; color:var(--text-muted);">Desconto</span><br><strong id="detalhe-pedido-desconto" style="color:var(--color-negative);">0%</strong></div>
+            <div><span style="font-size:9pt; color:var(--text-muted);">Frete</span><br><strong id="detalhe-pedido-frete">R$ 0,00</strong></div>
             <div><span style="font-size:9pt; color:var(--text-muted);">Total Líquido</span><br><strong id="detalhe-pedido-valor-liquido" style="color:var(--color-primary); font-size:11pt;">R$ 0,00</strong></div>
         </div>
         <div id="detalhe-pedido-observacoes-wrap" style="display:none; margin-bottom:14px; font-size:9pt; color:var(--text-muted);">💬 <span id="detalhe-pedido-observacoes"></span></div>
@@ -3108,4 +3114,4 @@
 </div>
 <script type="module" src="script.js?v=2"></script>
 </body>
-</html>
+</html>
