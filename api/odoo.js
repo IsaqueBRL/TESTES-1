@@ -30,9 +30,35 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: "Falha na autenticação com o Odoo." });
         }
 
-        // AÇÃO 1: Atualizar Produto no Odoo
+        // AÇÃO: Buscar Categorias
+        if (action === "get_categories") {
+            const catRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "product.category", "search_read",
+                            [[]],
+                            { fields: ["id", "name"] }
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+
+            const catData = await catRes.json();
+            return res.status(200).json({ categories: catData.result || [] });
+        }
+
+        // AÇÃO: Atualizar Produto
         if (action === "update") {
-            const { id, name, list_price, standard_price } = body;
+            const { id, name, list_price, standard_price, categ_id } = body;
 
             if (!id) {
                 return res.status(400).json({ error: "ID do produto é obrigatório." });
@@ -40,14 +66,13 @@ export default async function handler(req, res) {
 
             const novoNome = name ? String(name).trim() : null;
 
-            // Monta os dados com context definindo o idioma para pt_BR / pt_PT (resolve a questão da tradução no Odoo)
             const templateData = {};
             if (list_price !== undefined) templateData.list_price = parseFloat(list_price) || 0.0;
             if (standard_price !== undefined) templateData.standard_price = parseFloat(standard_price) || 0.0;
             if (novoNome) templateData.name = novoNome;
+            if (categ_id) templateData.categ_id = Number(categ_id);
 
-            // Update no product.template especificando o contexto de idioma
-            const updateRes = await fetch(ODOO_URL, {
+            await fetch(ODOO_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -60,14 +85,13 @@ export default async function handler(req, res) {
                             ODOO_DB, uid, ODOO_API_KEY,
                             "product.template", "write",
                             [[Number(id)], templateData],
-                            { context: { lang: "pt_BR" } } // Define o contexto da tradução
+                            { context: { lang: "pt_BR" } }
                         ]
                     },
                     id: Date.now()
                 })
             });
 
-            // Força a atualização sem context caso o id do idioma seja genérico
             if (novoNome) {
                 await fetch(ODOO_URL, {
                     method: "POST",
@@ -89,16 +113,10 @@ export default async function handler(req, res) {
                 });
             }
 
-            const updateData = await updateRes.json();
-
-            if (updateData.error) {
-                return res.status(500).json({ error: "Erro ao atualizar no Odoo.", details: updateData.error });
-            }
-
-            return res.status(200).json({ success: true, message: "Produto e Nome atualizados com sucesso!" });
+            return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
         }
 
-        // AÇÃO 2: Pesquisar Produtos
+        // AÇÃO: Pesquisar Produtos
         const query = body.query || "";
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
@@ -114,7 +132,7 @@ export default async function handler(req, res) {
                         "product.template", "search_read",
                         [[["name", "ilike", query]]],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type"], 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type", "categ_id"], 
                             limit: 100 
                         }
                     ]
