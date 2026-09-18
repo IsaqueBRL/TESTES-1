@@ -4,14 +4,10 @@ export default async function handler(req, res) {
     const ODOO_USER = "isaquemoises14@gmail.com";
     const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
-    // Defina uma senha de admin para autorizar as alterações no site
-    const SENHA_ADMIN = "123456"; 
-
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const action = body.action || "search";
 
     try {
-        // 1. Autenticação no Odoo
         const authRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -34,13 +30,18 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: "Falha na autenticação com o Odoo." });
         }
 
-        // 2. Ação de ATUALIZAR produto no Odoo
+        // AÇÃO 1: Atualizar Produto no Odoo
         if (action === "update") {
-            const { id, name, list_price, standard_price, password } = body;
+            const { id, name, list_price, standard_price } = body;
 
-            if (password !== SENHA_ADMIN) {
-                return res.status(403).json({ error: "Senha de administração incorreta." });
+            if (!id) {
+                return res.status(400).json({ error: "ID do produto é obrigatório." });
             }
+
+            const updateFields = {};
+            if (name !== undefined) updateFields.name = String(name).trim();
+            if (list_price !== undefined) updateFields.list_price = parseFloat(list_price) || 0.0;
+            if (standard_price !== undefined) updateFields.standard_price = parseFloat(standard_price) || 0.0;
 
             const updateRes = await fetch(ODOO_URL, {
                 method: "POST",
@@ -59,11 +60,7 @@ export default async function handler(req, res) {
                             "write",
                             [
                                 [Number(id)],
-                                {
-                                    name: name,
-                                    list_price: parseFloat(list_price),
-                                    standard_price: parseFloat(standard_price)
-                                }
+                                updateFields
                             ]
                         ]
                     },
@@ -80,7 +77,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
         }
 
-        // 3. Ação de BUSCAR produtos (Comportamento padrão)
+        // AÇÃO 2: Pesquisar Produtos (Comportamento Padrão)
         const query = body.query || "";
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
@@ -99,7 +96,7 @@ export default async function handler(req, res) {
                         "search_read",
                         [[["name", "ilike", query]]],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "detailed_type", "type", "categ_id"], 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type"], 
                             limit: 100 
                         }
                     ]
@@ -110,15 +107,9 @@ export default async function handler(req, res) {
 
         const prodData = await prodRes.json();
         const lista = prodData.result || [];
+        const produtosFiltrados = lista.filter(prod => prod.type !== "service");
 
-        // Filtra para remover serviços e despesas
-        const apenasMercadorias = lista.filter(prod => {
-            const tipo = prod.detailed_type || prod.type || "";
-            const cat = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "";
-            return tipo !== "service" && !cat.toUpperCase().includes("DESPESAS");
-        });
-
-        return res.status(200).json({ result: apenasMercadorias });
+        return res.status(200).json({ result: produtosFiltrados });
 
     } catch (error) {
         return res.status(500).json({ error: error.message });
