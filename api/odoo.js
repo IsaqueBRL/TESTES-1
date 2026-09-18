@@ -56,6 +56,39 @@ export default async function handler(req, res) {
             return res.status(200).json({ categories: catData.result || [] });
         }
 
+        // AÇÃO: Buscar Estoque Detalhado (stock.quant)
+        if (action === "get_stock") {
+            const query = body.query || "";
+            const stockRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "stock.quant", "search_read",
+                            [[
+                                ["location_id.usage", "=", "internal"],
+                                ["product_id.name", "ilike", query]
+                            ]],
+                            { 
+                                fields: ["id", "location_id", "product_id", "quantity"], 
+                                limit: 100 
+                            }
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+
+            const stockData = await stockRes.json();
+            return res.status(200).json({ result: stockData.result || [] });
+        }
+
         // AÇÃO: Atualizar Produto
         if (action === "update") {
             const { id, name, list_price, standard_price, categ_id } = body;
