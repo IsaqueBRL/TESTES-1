@@ -1,11 +1,11 @@
 export default async function handler(req, res) {
-    // Configurações da API Odoo
+    // Configurações de Acesso ao Odoo
     const ODOO_URL = "https://deuris-candy-2.odoo.com/jsonrpc";
-    const ODOO_DB = "deuris-candy-2"; // Nome da base de dados ajustado
+    const ODOO_DB = "deuris-candy-2";
     const ODOO_USER = "isaquemoises14@gmail.com";
     const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
-    // Garante a leitura da query enviada no body
+    // Trata o corpo da requisição enviada pelo front-end
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const query = body.query || "";
 
@@ -29,7 +29,6 @@ export default async function handler(req, res) {
         const authData = await authRes.json();
         const uid = authData.result;
 
-        // Se a autenticação falhar, retorna o erro retornado pelo Odoo
         if (!uid) {
             return res.status(401).json({ 
                 error: "Falha na autenticação com o Odoo.", 
@@ -37,7 +36,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 2. Busca de produtos no modelo product.template
+        // 2. Procura de Produtos trazendo Descrição, Preço Venda, Custo e Estoque
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -55,8 +54,8 @@ export default async function handler(req, res) {
                         "search_read",
                         [[["name", "ilike", query]]],
                         { 
-                            fields: ["id", "name", "list_price", "qty_available"], 
-                            limit: 20 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available"], 
+                            limit: 50 
                         }
                     ]
                 },
