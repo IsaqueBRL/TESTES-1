@@ -36,7 +36,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 2. Procura apenas produtos onde o tipo é Mercadorias ('consu' ou 'product')
+        // 2. Busca estrita apenas de produtos do tipo 'consu' (Mercadorias)
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -55,12 +55,12 @@ export default async function handler(req, res) {
                         [
                             [
                                 ["name", "ilike", query],
-                                ["detailed_type", "in", ["consu", "product"]]
+                                ["detailed_type", "=", "consu"]
                             ]
                         ],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available"], 
-                            limit: 50 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "detailed_type"], 
+                            limit: 100 
                         }
                     ]
                 },
@@ -69,7 +69,11 @@ export default async function handler(req, res) {
         });
 
         const prodData = await prodRes.json();
-        return res.status(200).json({ result: prodData.result || [] });
+        
+        // Filtro de segurança adicional: garante remoção de qualquer serviço
+        const produtosFiltrados = (prodData.result || []).filter(prod => prod.detailed_type === 'consu');
+
+        return res.status(200).json({ result: produtosFiltrados });
 
     } catch (error) {
         return res.status(500).json({ error: error.message });
