@@ -36,7 +36,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 2. Busca ignorando tipos de Serviço ('service')
+        // 2. Busca os produtos diretamente pelo nome
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -54,12 +54,11 @@ export default async function handler(req, res) {
                         "search_read",
                         [
                             [
-                                ["name", "ilike", query],
-                                ["detailed_type", "!=", "service"] // Exclui estritamente apenas Serviços
+                                ["name", "ilike", query]
                             ]
                         ],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "detailed_type"], 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type", "categ_id"], 
                             limit: 100 
                         }
                     ]
@@ -69,11 +68,19 @@ export default async function handler(req, res) {
         });
 
         const prodData = await prodRes.json();
-        
-        // Filtro de segurança adicional no código para garantir que nada do tipo 'service' passe
-        const produtosFiltrados = (prodData.result || []).filter(prod => prod.detailed_type !== 'service');
+        const todosProdutos = prodData.result || [];
 
-        return res.status(200).json({ result: produtosFiltrados });
+        // 3. Filtra desconsiderando itens que pertençam à categoria DESPESAS ou sejam serviços
+        const mercadorias = todosProdutos.filter(prod => {
+            const nomeCategoria = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "";
+            const ehDespesa = nomeCategoria.toUpperCase().includes("DESPESAS");
+            const ehServico = prod.type === "service";
+
+            // Retorna apenas se NÃO for despesa nem serviço
+            return !ehDespesa && !ehServico;
+        });
+
+        return res.status(200).json({ result: mercadorias });
 
     } catch (error) {
         return res.status(500).json({ error: error.message });
