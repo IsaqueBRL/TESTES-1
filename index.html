@@ -254,7 +254,7 @@
                         <td class="cost-col">R$ ${cost.toFixed(2)}</td>
                         <td>
                             <span class="stock-badge ${hasStock ? 'stock-in' : 'stock-out'}">
-                                ${hasStock ? `${stock} un` : 'Esgotado'}
+                                ${hasStock ? `${Number(stock)} un` : 'Esgotado'}
                             </span>
                         </td>
                         <td>
@@ -285,16 +285,19 @@
 
             const data = await response.json();
 
-            if (!data.result || data.result.length === 0) {
-                status.innerText = "Nenhum registro de estoque encontrado.";
-                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhum registro de estoque encontrado</td></tr>`;
+            // Filtro de segurança extra para garantir que nada zerado ou negativo passe
+            const estoquesValidos = (data.result || []).filter(item => (item.quantity ?? 0) > 0);
+
+            if (estoquesValidos.length === 0) {
+                status.innerText = "Nenhum registro de estoque disponível.";
+                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhum registro encontrado</td></tr>`;
                 return;
             }
 
-            status.innerText = `${data.result.length} registro(s) encontrado(s):`;
+            status.innerText = `${estoquesValidos.length} registro(s) encontrado(s):`;
             results.innerHTML = "";
 
-            data.result.forEach(item => {
+            estoquesValidos.forEach(item => {
                 const location = Array.isArray(item.location_id) ? item.location_id[1] : "-";
                 const product = Array.isArray(item.product_id) ? item.product_id[1] : "-";
                 const qty = item.quantity ?? 0;
@@ -303,7 +306,7 @@
                     <tr>
                         <td><strong>${location}</strong></td>
                         <td>${product}</td>
-                        <td><strong>${qty.toFixed(2)}</strong></td>
+                        <td><strong>${Number(qty)}</strong></td>
                     </tr>
                 `;
             });
