@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consulta e Edição de Produtos - Deuris Candy 2</title>
+    <title>Deuris Candy 2 - Sistema de Gestão</title>
     <style>
         :root {
             --primary-color: #714B67;
@@ -22,8 +22,17 @@
         .container { max-width: 1100px; margin: 0 auto; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         
         header { text-align: center; margin-bottom: 20px; }
-        header h1 { color: var(--primary-color); font-size: 24px; margin-bottom: 5px; }
+        header h1 { color: var(--primary-color); font-size: 26px; margin-bottom: 5px; }
         header p { color: #666; font-size: 14px; }
+
+        /* Menu da Tela Inicial */
+        .home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 10px; gap: 20px; text-align: center; }
+        .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 400px; }
+        .btn-menu { flex: 1; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        .btn-menu:hover { background-color: var(--primary-hover); }
+
+        .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+        .btn-back { background-color: #666; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 
         .search-box { display: flex; gap: 8px; margin-bottom: 15px; }
         .search-box input { flex: 1; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; outline: none; }
@@ -32,7 +41,7 @@
         .status { text-align: center; margin-bottom: 15px; font-size: 14px; color: #555; font-weight: 500; }
 
         .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border-color); }
-        table { width: 100%; border-collapse: collapse; min-width: 700px; text-align: left; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; text-align: left; }
         th { background-color: var(--primary-color); color: white; font-weight: 600; padding: 12px 14px; font-size: 14px; }
         td { padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
         tr:hover { background-color: #f8f9fa; }
@@ -55,41 +64,89 @@
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .btn-cancel { background-color: #777; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+
+        .view-section { display: none; }
+        .active-section { display: block; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h1>Consulta e Edição de Produtos</h1>
-        <p>Deuris Candy 2</p>
+        <h1>Deuris Candy 2</h1>
+        <p>Painel de Controle</p>
     </header>
 
-    <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Digite o nome do produto..." oninput="debounceSearch()">
-        <button onclick="buscarProdutos()">Pesquisar</button>
+    <!-- TELA INICIAL -->
+    <div id="homeSection" class="home-screen active-section">
+        <h3>Selecione uma opção:</h3>
+        <div class="menu-buttons">
+            <button class="btn-menu" onclick="mostrarTela('produtosSection'); buscarProdutos();">PRODUTOS</button>
+            <button class="btn-menu" onclick="mostrarTela('estoqueSection'); buscarEstoque();">ESTOQUE</button>
+        </div>
     </div>
 
-    <div id="status" class="status">Carregando produtos...</div>
+    <!-- TELA DE PRODUTOS -->
+    <div id="produtosSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <h2>Gestão de Produtos</h2>
+        </div>
 
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>DESCRIÇÃO</th>
-                    <th>CATEGORIA</th>
-                    <th>PREÇO VENDA</th>
-                    <th>CUSTO</th>
-                    <th>ESTOQUE</th>
-                    <th>AÇÕES</th>
-                </tr>
-            </thead>
-            <tbody id="results">
-            </tbody>
-        </table>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('produtos')">
+            <button onclick="buscarProdutos()">Pesquisar</button>
+        </div>
+
+        <div id="statusProdutos" class="status">Carregando produtos...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>DESCRIÇÃO</th>
+                        <th>CATEGORIA</th>
+                        <th>PREÇO VENDA</th>
+                        <th>CUSTO</th>
+                        <th>ESTOQUE</th>
+                        <th>AÇÕES</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsProdutos"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TELA DE ESTOQUE -->
+    <div id="estoqueSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <h2>Detalhamento do Estoque</h2>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="searchEstoqueInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('estoque')">
+            <button onclick="buscarEstoque()">Pesquisar</button>
+        </div>
+
+        <div id="statusEstoque" class="status">Carregando estoque...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>LOCAL</th>
+                        <th>PRODUTO</th>
+                        <th>QUANTIDADE</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsEstoque"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
+<!-- Modal de Edição de Produtos -->
 <div class="modal-overlay" id="editModal">
     <div class="modal">
         <h2>Editar Produto</h2>
@@ -119,7 +176,14 @@
 <script>
     let timer = null;
     let produtosCarregados = [];
-    let categoriasCadastradas = [];
+
+    function mostrarTela(idTela) {
+        document.getElementById('homeSection').classList.remove('active-section');
+        document.getElementById('produtosSection').classList.remove('active-section');
+        document.getElementById('estoqueSection').classList.remove('active-section');
+
+        document.getElementById(idTela).classList.add('active-section');
+    }
 
     async function carregarCategorias() {
         try {
@@ -130,7 +194,6 @@
             });
             const data = await response.json();
             if (data.categories) {
-                categoriasCadastradas = data.categories;
                 const selectCat = document.getElementById("editCategory");
                 selectCat.innerHTML = "";
                 data.categories.forEach(cat => {
@@ -142,17 +205,18 @@
         }
     }
 
-    function debounceSearch() {
+    function debounceSearch(tipo) {
         clearTimeout(timer);
         timer = setTimeout(() => {
-            buscarProdutos();
+            if (tipo === 'produtos') buscarProdutos();
+            if (tipo === 'estoque') buscarEstoque();
         }, 300);
     }
 
     async function buscarProdutos() {
         const query = document.getElementById("searchInput").value.trim();
-        const status = document.getElementById("status");
-        const results = document.getElementById("results");
+        const status = document.getElementById("statusProdutos");
+        const results = document.getElementById("resultsProdutos");
 
         status.innerText = "Pesquisando produtos...";
 
@@ -200,8 +264,52 @@
                 `;
             });
         } catch (e) {
-            status.innerText = "Erro ao carregar produtos. Tente novamente.";
+            status.innerText = "Erro ao carregar produtos.";
             results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    async function buscarEstoque() {
+        const query = document.getElementById("searchEstoqueInput").value.trim();
+        const status = document.getElementById("statusEstoque");
+        const results = document.getElementById("resultsEstoque");
+
+        status.innerText = "Pesquisando estoque...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_stock", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhum registro de estoque encontrado.";
+                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhum registro de estoque encontrado</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} registro(s) encontrado(s):`;
+            results.innerHTML = "";
+
+            data.result.forEach(item => {
+                const location = Array.isArray(item.location_id) ? item.location_id[1] : "-";
+                const product = Array.isArray(item.product_id) ? item.product_id[1] : "-";
+                const qty = item.quantity ?? 0;
+
+                results.innerHTML += `
+                    <tr>
+                        <td><strong>${location}</strong></td>
+                        <td>${product}</td>
+                        <td><strong>${qty.toFixed(2)}</strong></td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar estoque.";
+            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
 
@@ -254,7 +362,7 @@
             if (data.error) {
                 alert(`Erro ao salvar: ${data.error}`);
             } else {
-                alert('Produto e Categoria atualizados com sucesso no Odoo!');
+                alert('Produto atualizado com sucesso no Odoo!');
                 fecharModal();
                 buscarProdutos();
             }
@@ -268,7 +376,6 @@
 
     window.onload = () => {
         carregarCategorias();
-        buscarProdutos();
     };
 </script>
 
