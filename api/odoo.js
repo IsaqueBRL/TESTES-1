@@ -56,7 +56,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ categories: catData.result || [] });
         }
 
-        // AÇÃO: Buscar Estoque Detalhado (stock.quant)
+        // AÇÃO: Buscar Estoque Detalhado (stock.quant) - FILTRANDO ZERADOS
         if (action === "get_stock") {
             const query = body.query || "";
             const stockRes = await fetch(ODOO_URL, {
@@ -73,7 +73,8 @@ export default async function handler(req, res) {
                             "stock.quant", "search_read",
                             [[
                                 ["location_id.usage", "=", "internal"],
-                                ["product_id.name", "ilike", query]
+                                ["product_id.name", "ilike", query],
+                                ["quantity", ">", 0]
                             ]],
                             { 
                                 fields: ["id", "location_id", "product_id", "quantity"], 
