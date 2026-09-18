@@ -36,7 +36,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 2. Busca estrita apenas de produtos do tipo 'consu' (Mercadorias)
+        // 2. Busca ignorando tipos de Serviço ('service')
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
                         [
                             [
                                 ["name", "ilike", query],
-                                ["detailed_type", "=", "consu"]
+                                ["detailed_type", "!=", "service"] // Exclui estritamente apenas Serviços
                             ]
                         ],
                         { 
@@ -70,8 +70,8 @@ export default async function handler(req, res) {
 
         const prodData = await prodRes.json();
         
-        // Filtro de segurança adicional: garante remoção de qualquer serviço
-        const produtosFiltrados = (prodData.result || []).filter(prod => prod.detailed_type === 'consu');
+        // Filtro de segurança adicional no código para garantir que nada do tipo 'service' passe
+        const produtosFiltrados = (prodData.result || []).filter(prod => prod.detailed_type !== 'service');
 
         return res.status(200).json({ result: produtosFiltrados });
 
