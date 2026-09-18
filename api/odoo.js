@@ -30,7 +30,7 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: "Falha na autenticação com o Odoo.", details: authData });
         }
 
-        // Busca os produtos sem filtros no banco de dados para evitar erros de sintaxe
+        // Busca TODOS os produtos sem filtros de tipo
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
                             ]
                         ],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type"], 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "detailed_type", "type"], 
                             limit: 100 
                         }
                     ]
@@ -62,12 +62,23 @@ export default async function handler(req, res) {
         });
 
         const prodData = await prodRes.json();
-        const lista = prodData.result || [];
+        const produtos = (prodData.result || []).map(prod => {
+            const rawType = prod.detailed_type || prod.type || "";
+            let tipoFormatado = "Mercadorias";
 
-        // Filtra apenas se o tipo for explicitamente diferente de serviço
-        const produtosFiltrados = lista.filter(prod => prod.type !== "service");
+            if (rawType === "service") {
+                tipoFormatado = "Serviço";
+            } else if (rawType === "combo") {
+                tipoFormatado = "Combo";
+            }
 
-        return res.status(200).json({ result: produtosFiltrados });
+            return {
+                ...prod,
+                tipo_display: tipoFormatado
+            };
+        });
+
+        return res.status(200).json({ result: produtos });
 
     } catch (error) {
         return res.status(500).json({ error: error.message });
