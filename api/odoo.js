@@ -30,7 +30,7 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: "Falha na autenticação com o Odoo.", details: authData });
         }
 
-        // Procura os produtos no Odoo
+        // Busca os produtos sem filtros no banco de dados para evitar erros de sintaxe
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
                             ]
                         ],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "detailed_type", "type", "categ_id"], 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type"], 
                             limit: 100 
                         }
                     ]
@@ -64,18 +64,10 @@ export default async function handler(req, res) {
         const prodData = await prodRes.json();
         const lista = prodData.result || [];
 
-        // Filtra para remover Serviços e Categoria DESPESAS (mantém apenas Mercadorias)
-        const apenasMercadorias = lista.filter(prod => {
-            const tipoDetalhado = prod.detailed_type || prod.type || "";
-            const nomeCategoria = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "";
-            
-            const ehServico = tipoDetalhado === "service";
-            const ehDespesa = nomeCategoria.toUpperCase().includes("DESPESAS");
+        // Filtra apenas se o tipo for explicitamente diferente de serviço
+        const produtosFiltrados = lista.filter(prod => prod.type !== "service");
 
-            return !ehServico && !ehDespesa;
-        });
-
-        return res.status(200).json({ result: apenasMercadorias });
+        return res.status(200).json({ result: produtosFiltrados });
 
     } catch (error) {
         return res.status(500).json({ error: error.message });
