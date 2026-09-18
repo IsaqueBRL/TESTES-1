@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pesquisa e Edição de Produtos - Deuris Candy 2</title>
+    <title>Consulta e Edição de Produtos - Deuris Candy 2</title>
     <style>
         :root {
             --primary-color: #714B67;
@@ -15,7 +15,6 @@
             --success-color: #2e7d32;
             --danger-color: #c62828;
             --edit-color: #1976d2;
-            --edit-hover: #115293;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,13 +32,14 @@
         .status { text-align: center; margin-bottom: 15px; font-size: 14px; color: #555; font-weight: 500; }
 
         .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border-color); }
-        table { width: 100%; border-collapse: collapse; min-width: 600px; text-align: left; }
+        table { width: 100%; border-collapse: collapse; min-width: 700px; text-align: left; }
         th { background-color: var(--primary-color); color: white; font-weight: 600; padding: 12px 14px; font-size: 14px; }
         td { padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
         tr:hover { background-color: #f8f9fa; }
         
         .price-col { font-weight: 600; color: #222; }
         .cost-col { color: #666; font-weight: 500; }
+        .category-badge { background-color: #f0f0f0; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #444; border: 1px solid #ddd; }
         
         .stock-badge { display: inline-block; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
         .stock-in { background-color: #e8f5e9; color: var(--success-color); }
@@ -47,12 +47,11 @@
 
         .btn-edit { background-color: var(--edit-color); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
 
-        /* Modal de Edição */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
         .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
         .modal h2 { color: var(--primary-color); font-size: 18px; }
         .modal label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: -8px; }
-        .modal input { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; outline: none; }
+        .modal input, .modal select { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; outline: none; background: #fff; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .btn-cancel { background-color: #777; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
@@ -78,6 +77,7 @@
             <thead>
                 <tr>
                     <th>DESCRIÇÃO</th>
+                    <th>CATEGORIA</th>
                     <th>PREÇO VENDA</th>
                     <th>CUSTO</th>
                     <th>ESTOQUE</th>
@@ -85,13 +85,11 @@
                 </tr>
             </thead>
             <tbody id="results">
-                <!-- Linhas dos produtos serão carregadas aqui -->
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- Modal de Edição -->
 <div class="modal-overlay" id="editModal">
     <div class="modal">
         <h2>Editar Produto</h2>
@@ -99,6 +97,11 @@
         
         <label>Descrição / Nome</label>
         <input type="text" id="editName">
+
+        <label>Categoria</label>
+        <select id="editCategory">
+            <option value="">Carregando categorias...</option>
+        </select>
 
         <label>Preço de Venda (R$)</label>
         <input type="number" step="0.01" id="editPrice">
@@ -116,6 +119,28 @@
 <script>
     let timer = null;
     let produtosCarregados = [];
+    let categoriasCadastradas = [];
+
+    async function carregarCategorias() {
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_categories" })
+            });
+            const data = await response.json();
+            if (data.categories) {
+                categoriasCadastradas = data.categories;
+                const selectCat = document.getElementById("editCategory");
+                selectCat.innerHTML = "";
+                data.categories.forEach(cat => {
+                    selectCat.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
+                });
+            }
+        } catch (e) {
+            console.error("Erro ao carregar categorias", e);
+        }
+    }
 
     function debounceSearch() {
         clearTimeout(timer);
@@ -142,7 +167,7 @@
 
             if (!data.result || data.result.length === 0) {
                 status.innerText = "Nenhum produto encontrado.";
-                results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #888;">Nenhum produto encontrado</td></tr>`;
+                results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">Nenhum produto encontrado</td></tr>`;
                 return;
             }
 
@@ -154,11 +179,13 @@
                 const stock = prod.qty_available ?? 0;
                 const price = prod.list_price ?? 0;
                 const cost = prod.standard_price ?? 0;
+                const categoryName = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "Sem Categoria";
                 const hasStock = stock > 0;
 
                 results.innerHTML += `
                     <tr>
                         <td><strong>${prod.name}</strong></td>
+                        <td><span class="category-badge">${categoryName}</span></td>
                         <td class="price-col">R$ ${price.toFixed(2)}</td>
                         <td class="cost-col">R$ ${cost.toFixed(2)}</td>
                         <td>
@@ -174,7 +201,7 @@
             });
         } catch (e) {
             status.innerText = "Erro ao carregar produtos. Tente novamente.";
-            results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+            results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
 
@@ -186,6 +213,10 @@
         document.getElementById('editName').value = prod.name;
         document.getElementById('editPrice').value = prod.list_price;
         document.getElementById('editCost').value = prod.standard_price;
+
+        const catId = Array.isArray(prod.categ_id) ? prod.categ_id[0] : "";
+        document.getElementById('editCategory').value = catId;
+
         document.getElementById('editModal').style.display = 'flex';
     }
 
@@ -198,6 +229,7 @@
         const name = document.getElementById('editName').value;
         const list_price = document.getElementById('editPrice').value;
         const standard_price = document.getElementById('editCost').value;
+        const categ_id = document.getElementById('editCategory').value;
         const btnSalvar = document.getElementById('btnSalvar');
 
         btnSalvar.innerText = "Salvando...";
@@ -212,7 +244,8 @@
                     id: Number(id),
                     name: name,
                     list_price: parseFloat(list_price),
-                    standard_price: parseFloat(standard_price)
+                    standard_price: parseFloat(standard_price),
+                    categ_id: Number(categ_id)
                 })
             });
 
@@ -221,7 +254,7 @@
             if (data.error) {
                 alert(`Erro ao salvar: ${data.error}`);
             } else {
-                alert('Produto atualizado com sucesso no Odoo!');
+                alert('Produto e Categoria atualizados com sucesso no Odoo!');
                 fecharModal();
                 buscarProdutos();
             }
@@ -233,7 +266,10 @@
         }
     }
 
-    window.onload = buscarProdutos;
+    window.onload = () => {
+        carregarCategorias();
+        buscarProdutos();
+    };
 </script>
 
 </body>
