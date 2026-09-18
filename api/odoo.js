@@ -1,16 +1,13 @@
 export default async function handler(req, res) {
-    // Configurações de Acesso ao Odoo
     const ODOO_URL = "https://deuris-candy-2.odoo.com/jsonrpc";
     const ODOO_DB = "deuris-candy-2";
     const ODOO_USER = "isaquemoises14@gmail.com";
     const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
-    // Trata o corpo da requisição enviada pelo front-end
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const query = body.query || "";
 
     try {
-        // 1. Autenticação no Odoo via JSON-RPC
         const authRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -30,13 +27,10 @@ export default async function handler(req, res) {
         const uid = authData.result;
 
         if (!uid) {
-            return res.status(401).json({ 
-                error: "Falha na autenticação com o Odoo.", 
-                details: authData 
-            });
+            return res.status(401).json({ error: "Falha na autenticação com o Odoo.", details: authData });
         }
 
-        // 2. Busca os produtos diretamente pelo nome
+        // Procura os produtos no Odoo
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -58,7 +52,7 @@ export default async function handler(req, res) {
                             ]
                         ],
                         { 
-                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type", "categ_id"], 
+                            fields: ["id", "name", "list_price", "standard_price", "qty_available", "detailed_type", "type", "categ_id"], 
                             limit: 100 
                         }
                     ]
@@ -68,19 +62,20 @@ export default async function handler(req, res) {
         });
 
         const prodData = await prodRes.json();
-        const todosProdutos = prodData.result || [];
+        const lista = prodData.result || [];
 
-        // 3. Filtra desconsiderando itens que pertençam à categoria DESPESAS ou sejam serviços
-        const mercadorias = todosProdutos.filter(prod => {
+        // Filtra para remover Serviços e Categoria DESPESAS (mantém apenas Mercadorias)
+        const apenasMercadorias = lista.filter(prod => {
+            const tipoDetalhado = prod.detailed_type || prod.type || "";
             const nomeCategoria = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "";
+            
+            const ehServico = tipoDetalhado === "service";
             const ehDespesa = nomeCategoria.toUpperCase().includes("DESPESAS");
-            const ehServico = prod.type === "service";
 
-            // Retorna apenas se NÃO for despesa nem serviço
-            return !ehDespesa && !ehServico;
+            return !ehServico && !ehDespesa;
         });
 
-        return res.status(200).json({ result: mercadorias });
+        return res.status(200).json({ result: apenasMercadorias });
 
     } catch (error) {
         return res.status(500).json({ error: error.message });
