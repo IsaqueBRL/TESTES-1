@@ -4,10 +4,14 @@ export default async function handler(req, res) {
     const ODOO_USER = "isaquemoises14@gmail.com";
     const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
+    // Senha simples para autorizar alterações
+    const SENHA_ADMIN = "123456";
+
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const query = body.query || "";
+    const action = body.action || "search";
 
     try {
+        // Autenticação no Odoo
         const authRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -27,10 +31,57 @@ export default async function handler(req, res) {
         const uid = authData.result;
 
         if (!uid) {
-            return res.status(401).json({ error: "Falha na autenticação com o Odoo.", details: authData });
+            return res.status(401).json({ error: "Falha na autenticação com o Odoo." });
         }
 
-        // Busca os produtos sem filtros no banco de dados para evitar erros de sintaxe
+        // AÇÃO 1: Atualizar Produto
+        if (action === "update") {
+            const { id, name, list_price, standard_price, password } = body;
+
+            if (password !== SENHA_ADMIN) {
+                return res.status(403).json({ error: "Senha de administração incorreta." });
+            }
+
+            const updateRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB,
+                            uid,
+                            ODOO_API_KEY,
+                            "product.template",
+                            "write",
+                            [
+                                [Number(id)],
+                                {
+                                    name: name,
+                                    list_price: parseFloat(list_price),
+                                    standard_price: parseFloat(standard_price)
+                                }
+                            ]
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+
+            const updateData = await updateRes.json();
+
+            if (updateData.error) {
+                return res.status(500).json({ error: "Erro ao atualizar no Odoo.", details: updateData.error });
+            }
+
+            return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
+        }
+
+        // AÇÃO 2: Procurar Produtos (Comportamento Padrão)
+        const query = body.query || "";
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -46,11 +97,7 @@ export default async function handler(req, res) {
                         ODOO_API_KEY,
                         "product.template",
                         "search_read",
-                        [
-                            [
-                                ["name", "ilike", query]
-                            ]
-                        ],
+                        [[["name", "ilike", query]]],
                         { 
                             fields: ["id", "name", "list_price", "standard_price", "qty_available", "type"], 
                             limit: 100 
@@ -63,8 +110,6 @@ export default async function handler(req, res) {
 
         const prodData = await prodRes.json();
         const lista = prodData.result || [];
-
-        // Filtra apenas se o tipo for explicitamente diferente de serviço
         const produtosFiltrados = lista.filter(prod => prod.type !== "service");
 
         return res.status(200).json({ result: produtosFiltrados });
