@@ -38,12 +38,13 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: "ID do produto é obrigatório." });
             }
 
-            const updateFields = {};
-            if (name !== undefined) updateFields.name = String(name).trim();
-            if (list_price !== undefined) updateFields.list_price = parseFloat(list_price) || 0.0;
-            if (standard_price !== undefined) updateFields.standard_price = parseFloat(standard_price) || 0.0;
+            const templateData = {};
+            if (list_price !== undefined) templateData.list_price = parseFloat(list_price) || 0.0;
+            if (standard_price !== undefined) templateData.standard_price = parseFloat(standard_price) || 0.0;
+            if (name !== undefined) templateData.name = String(name).trim();
 
-            const updateRes = await fetch(ODOO_URL, {
+            // 1. Atualiza no product.template (Preços e Nome)
+            await fetch(ODOO_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -53,31 +54,65 @@ export default async function handler(req, res) {
                         service: "object",
                         method: "execute_kw",
                         args: [
-                            ODOO_DB,
-                            uid,
-                            ODOO_API_KEY,
-                            "product.template",
-                            "write",
-                            [
-                                [Number(id)],
-                                updateFields
-                            ]
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "product.template", "write",
+                            [[Number(id)], templateData]
                         ]
                     },
                     id: Date.now()
                 })
             });
 
-            const updateData = await updateRes.json();
+            // 2. Atualiza também no product.product para garantir a alteração do Nome na variante
+            if (name) {
+                const variantRes = await fetch(ODOO_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        method: "call",
+                        params: {
+                            service: "object",
+                            method: "execute_kw",
+                            args: [
+                                ODOO_DB, uid, ODOO_API_KEY,
+                                "product.product", "search_read",
+                                [[["product_tmpl_id", "=", Number(id)]]],
+                                { fields: ["id"] }
+                            ]
+                        },
+                        id: Date.now()
+                    })
+                });
 
-            if (updateData.error) {
-                return res.status(500).json({ error: "Erro ao atualizar no Odoo.", details: updateData.error });
+                const variantData = await variantRes.json();
+                if (variantData.result && variantData.result.length > 0) {
+                    const variantIds = variantData.result.map(v => v.id);
+                    await fetch(ODOO_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            jsonrpc: "2.0",
+                            method: "call",
+                            params: {
+                                service: "object",
+                                method: "execute_kw",
+                                args: [
+                                    ODOO_DB, uid, ODOO_API_KEY,
+                                    "product.product", "write",
+                                    [variantIds, { name: String(name).trim() }]
+                                ]
+                            },
+                            id: Date.now()
+                        })
+                    });
+                }
             }
 
-            return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
+            return res.status(200).json({ success: true, message: "Produto e Nome atualizados com sucesso!" });
         }
 
-        // AÇÃO 2: Pesquisar Produtos (Comportamento Padrão)
+        // AÇÃO 2: Pesquisar Produtos
         const query = body.query || "";
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
@@ -89,11 +124,8 @@ export default async function handler(req, res) {
                     service: "object",
                     method: "execute_kw",
                     args: [
-                        ODOO_DB,
-                        uid,
-                        ODOO_API_KEY,
-                        "product.template",
-                        "search_read",
+                        ODOO_DB, uid, ODOO_API_KEY,
+                        "product.template", "search_read",
                         [[["name", "ilike", query]]],
                         { 
                             fields: ["id", "name", "list_price", "standard_price", "qty_available", "type"], 
