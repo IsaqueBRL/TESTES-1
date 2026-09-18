@@ -4,9 +4,6 @@ export default async function handler(req, res) {
     const ODOO_USER = "isaquemoises14@gmail.com";
     const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
-    // Senha simples para autorizar alterações
-    const SENHA_ADMIN = "123456";
-
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const action = body.action || "search";
 
@@ -34,13 +31,9 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: "Falha na autenticação com o Odoo." });
         }
 
-        // AÇÃO 1: Atualizar Produto
+        // AÇÃO 1: Atualizar Produto (Sem verificação de senha)
         if (action === "update") {
-            const { id, name, list_price, standard_price, password } = body;
-
-            if (password !== SENHA_ADMIN) {
-                return res.status(403).json({ error: "Senha de administração incorreta." });
-            }
+            const { id, name, list_price, standard_price } = body;
 
             const updateRes = await fetch(ODOO_URL, {
                 method: "POST",
@@ -80,7 +73,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
         }
 
-        // AÇÃO 2: Procurar Produtos (Comportamento Padrão)
+        // AÇÃO 2: Procurar Produtos
         const query = body.query || "";
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
