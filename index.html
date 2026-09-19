@@ -69,6 +69,16 @@
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .btn-cancel { background-color: #777; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+
+        /* Custom Alert Notification Modal */
+        #customAlertModal { z-index: 2000; }
+        .alert-card { background: white; padding: 25px; border-radius: 12px; text-align: center; max-width: 380px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.15); display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .alert-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; }
+        .alert-icon.success { background: #e8f5e9; color: var(--success-color); }
+        .alert-icon.error { background: #ffebee; color: var(--danger-color); }
+        .alert-msg { font-size: 15px; color: #333; font-weight: 500; line-height: 1.4; }
+        .btn-alert-ok { background-color: var(--primary-color); color: white; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; }
+        .btn-alert-ok:hover { background-color: var(--primary-hover); }
     </style>
 </head>
 <body>
@@ -252,11 +262,43 @@
     </div>
 </div>
 
+<!-- MODAL DE NOTIFICAÇÃO PERSONALIZADO -->
+<div class="modal-overlay" id="customAlertModal">
+    <div class="alert-card">
+        <div class="alert-icon" id="alertIcon">✓</div>
+        <div class="alert-msg" id="alertMessage">Mensagem aqui</div>
+        <button class="btn-alert-ok" onclick="fecharCustomAlert()">OK</button>
+    </div>
+</div>
+
 <script>
     let timer = null;
     let produtosCarregados = [];
     let currentOrderId = null;
     let availableProducts = [];
+
+    /* FUNÇÃO DE NOTIFICAÇÃO PERSONALIZADA (Substitui o alert padrão) */
+    function showAlert(mensagem, tipo = 'success') {
+        const modal = document.getElementById('customAlertModal');
+        const msgEl = document.getElementById('alertMessage');
+        const iconEl = document.getElementById('alertIcon');
+
+        msgEl.innerText = mensagem;
+
+        if (tipo === 'success') {
+            iconEl.innerText = "✓";
+            iconEl.className = "alert-icon success";
+        } else {
+            iconEl.innerText = "✕";
+            iconEl.className = "alert-icon error";
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    function fecharCustomAlert() {
+        document.getElementById('customAlertModal').style.display = 'none';
+    }
 
     function mostrarTela(idTela) {
         document.querySelectorAll('.view-section').forEach(el => {
@@ -456,7 +498,7 @@
             });
 
             const data = await response.json();
-            if (data.error) return alert(data.error);
+            if (data.error) return showAlert(data.error, 'error');
 
             const order = data.order;
             availableProducts = data.products || [];
@@ -478,7 +520,7 @@
             renderLines(data.lines || []);
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
-            alert('Erro ao carregar detalhes do pedido.');
+            showAlert('Erro ao carregar detalhes do pedido.', 'error');
         }
     }
 
@@ -568,14 +610,14 @@
 
             const data = await res.json();
             if (data.success) {
-                alert('Pedido atualizado com sucesso no Odoo!');
                 fecharSaleModal();
+                showAlert('Pedido atualizado com sucesso no Odoo!', 'success');
                 buscarVendas();
             } else {
-                alert('Erro ao atualizar o pedido.');
+                showAlert('Erro ao atualizar o pedido.', 'error');
             }
         } catch (e) {
-            alert('Erro de conexão ao salvar pedido.');
+            showAlert('Erro de conexão ao salvar pedido.', 'error');
         } finally {
             btn.innerText = "Salvar no Odoo";
             btn.disabled = false;
@@ -629,14 +671,14 @@
             const data = await response.json();
 
             if (data.error) {
-                alert(`Erro ao salvar: ${data.error}`);
+                showAlert(`Erro ao salvar: ${data.error}`, 'error');
             } else {
-                alert('Produto atualizado com sucesso no Odoo!');
                 fecharModal();
+                showAlert('Produto atualizado com sucesso no Odoo!', 'success');
                 buscarProdutos();
             }
         } catch (err) {
-            alert('Erro de conexão ao salvar alterações.');
+            showAlert('Erro de conexão ao salvar alterações.', 'error');
         } finally {
             btnSalvar.innerText = "Salvar no Odoo";
             btnSalvar.disabled = false;
