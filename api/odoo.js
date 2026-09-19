@@ -113,18 +113,25 @@ export default async function handler(req, res) {
             const lines = await execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
                 fields: ["id", "product_id", "quantity", "price_unit", "price_subtotal"]
             });
+            const partners = await execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 });
             const paymentTerms = await execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] });
             const products = await execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] });
 
-            return res.status(200).json({ order: invoice, lines: lines || [], payment_terms: paymentTerms || [], products: products || [] });
+            return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
         // AÇÃO: Atualizar Fatura (Salvar e Lançar novamente)
         if (action === "update_sale") {
-            const { order_id, payment_term_id, lines } = body;
-            await execute("account.move", "write", [[Number(order_id)], {
+            const { order_id, partner_id, payment_term_id, lines } = body;
+            
+            const writeData = {
                 invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false
-            }]);
+            };
+            if (partner_id) {
+                writeData.partner_id = Number(partner_id);
+            }
+
+            await execute("account.move", "write", [[Number(order_id)], writeData]);
 
             for (const l of lines) {
                 if (l.id) {
