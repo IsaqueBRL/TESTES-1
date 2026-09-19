@@ -150,16 +150,16 @@
         </div>
     </div>
 
-    <!-- TELA DE VENDAS -->
+    <!-- TELA DE VENDAS (FATURAS) -->
     <div id="vendasSection" class="view-section">
         <div class="top-nav">
             <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
-            <h2>Pedidos de Vendas</h2>
+            <h2>Faturas de Vendas</h2>
             <button class="btn-action" onclick="abrirNovaVendaModal()">+ Nova Venda</button>
         </div>
 
         <div class="search-box">
-            <input type="text" id="searchVendasInput" placeholder="Digite o pedido ou cliente..." oninput="debounceSearch('vendas')">
+            <input type="text" id="searchVendasInput" placeholder="Digite o número da fatura ou cliente..." oninput="debounceSearch('vendas')">
             <button onclick="buscarVendas()">Pesquisar</button>
         </div>
 
@@ -169,7 +169,7 @@
             <table>
                 <thead>
                     <tr>
-                        <th>NÚMERO DO PEDIDO</th>
+                        <th>NÚMERO DA FATURA</th>
                         <th>CLIENTE</th>
                         <th>STATUS</th>
                         <th>VALOR TOTAL</th>
@@ -208,10 +208,10 @@
     </div>
 </div>
 
-<!-- Modal: Nova Venda -->
+<!-- Modal: Nova Venda (Fatura) -->
 <div class="modal-overlay" id="newSaleModal">
     <div class="modal" style="max-width: 700px;">
-        <h2>Nova Venda (Cotação)</h2>
+        <h2>Nova Venda (Fatura)</h2>
         
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 200px;">
@@ -224,7 +224,7 @@
             </div>
         </div>
 
-        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas do Pedido</h3>
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas da Fatura</h3>
         
         <div class="table-container">
             <table>
@@ -249,16 +249,16 @@
 
         <div class="modal-actions">
             <button class="btn-cancel" onclick="fecharNovaVendaModal()">Cancelar</button>
-            <button class="btn-save" id="btnConfirmarNovaVenda" onclick="confirmarCriacaoVenda()">Confirmar Venda</button>
+            <button class="btn-save" id="btnConfirmarNovaVenda" onclick="confirmarCriacaoVenda()">Confirmar (Lançar)</button>
         </div>
     </div>
 </div>
 
-<!-- Modal: Detalhes / Editar Venda -->
+<!-- Modal: Detalhes / Editar Fatura -->
 <div class="modal-overlay" id="saleModal">
     <div class="modal" style="max-width: 750px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2 id="saleModalTitle">Pedido</h2>
+            <h2 id="saleModalTitle">Fatura</h2>
             <span id="saleStatusBadge" class="status-badge"></span>
         </div>
         
@@ -273,7 +273,7 @@
             </div>
         </div>
 
-        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas do Pedido</h3>
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas da Fatura</h3>
         
         <div class="table-container">
             <table>
@@ -450,7 +450,7 @@
         const status = document.getElementById("statusVendas");
         const results = document.getElementById("resultsVendas");
 
-        status.innerText = "Pesquisando vendas...";
+        status.innerText = "Pesquisando faturas...";
 
         try {
             const response = await fetch('/api/odoo', {
@@ -462,27 +462,27 @@
             const data = await response.json();
 
             if (!data.result || data.result.length === 0) {
-                status.innerText = "Nenhuma venda encontrada.";
-                results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #888;">Nenhuma venda encontrada</td></tr>`;
+                status.innerText = "Nenhuma fatura encontrada.";
+                results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #888;">Nenhuma fatura encontrada</td></tr>`;
                 return;
             }
 
-            status.innerText = `${data.result.length} venda(s) encontrada(s):`;
+            status.innerText = `${data.result.length} fatura(s) encontrada(s):`;
             results.innerHTML = "";
 
             data.result.forEach(sale => {
                 const clientName = Array.isArray(sale.partner_id) ? sale.partner_id[1] : "-";
                 const orderNum = sale.name || "-";
                 const total = sale.amount_total ?? 0;
-                const isSale = sale.state === 'sale' || sale.state === 'done';
+                const isPosted = sale.state === 'posted';
 
                 results.innerHTML += `
                     <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
                         <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
                         <td>${clientName}</td>
                         <td>
-                            <span class="status-badge ${isSale ? 'status-sale' : 'status-draft'}">
-                                ${isSale ? 'Pedido de Venda' : 'Cotação'}
+                            <span class="status-badge ${isPosted ? 'status-sale' : 'status-draft'}">
+                                ${isPosted ? 'Lançado' : 'Provisório'}
                             </span>
                         </td>
                         <td class="price-col">R$ ${total.toFixed(2)}</td>
@@ -490,12 +490,12 @@
                 `;
             });
         } catch (e) {
-            status.innerText = "Erro ao carregar vendas.";
+            status.innerText = "Erro ao carregar faturas.";
             results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
 
-    /* CRIAR NOVA VENDA */
+    /* CRIAR NOVA VENDA (FATURA) */
     async function abrirNovaVendaModal() {
         try {
             const res = await fetch('/api/odoo', {
@@ -521,7 +521,7 @@
             
             document.getElementById('newSaleModal').style.display = 'flex';
         } catch (e) {
-            alert('Erro ao abrir formulário de nova venda.');
+            alert('Erro ao abrir formulário de nova fatura.');
         }
     }
 
@@ -568,7 +568,7 @@
 
     async function confirmarCriacaoVenda() {
         const btn = document.getElementById('btnConfirmarNovaVenda');
-        btn.innerText = "Criando...";
+        btn.innerText = "Lançando...";
         btn.disabled = true;
 
         const partner_id = document.getElementById('newSalePartner').value;
@@ -593,20 +593,20 @@
 
             if (dataCreate.success) {
                 fecharNovaVendaModal();
-                alert(`Venda vinculada ao Pedido N° ${dataCreate.name} com status 'Pedido de Venda'!`);
+                alert(`Fatura N° ${dataCreate.name} criada e lançada com sucesso!`);
                 buscarVendas();
             } else {
-                alert('Erro ao criar venda.');
+                alert('Erro ao criar fatura.');
             }
         } catch (e) {
-            alert('Erro na requisição ao criar venda.');
+            alert('Erro na requisição ao criar fatura.');
         } finally {
-            btn.innerText = "Confirmar Venda";
+            btn.innerText = "Confirmar (Lançar)";
             btn.disabled = false;
         }
     }
 
-    /* EDITAR VENDA EXISTENTE (DESTRAVAR / DESTRAVADO) */
+    /* EDITAR FATURA EXISTENTE (VOLTAR PARA PROVISÓRIO E CONFIRMAR) */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
         try {
@@ -619,21 +619,21 @@
             const data = await response.json();
             if (data.error) return alert(data.error);
 
-            const order = data.order;
+            const invoice = data.order;
             availableProducts = data.products || [];
 
-            document.getElementById('saleModalTitle').innerText = `Pedido ${order.name}`;
-            document.getElementById('saleCustomer').value = Array.isArray(order.partner_id) ? order.partner_id[1] : "";
+            document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name}`;
+            document.getElementById('saleCustomer').value = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : "";
 
             const statusBadge = document.getElementById('saleStatusBadge');
-            const isSale = order.state === 'sale' || order.state === 'done';
-            statusBadge.innerText = isSale ? 'Pedido de Venda' : 'Cotação';
-            statusBadge.className = `status-badge ${isSale ? 'status-sale' : 'status-draft'}`;
+            const isPosted = invoice.state === 'posted';
+            statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
+            statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
 
             const selectTerm = document.getElementById('salePaymentTerm');
             selectTerm.innerHTML = '<option value="">Selecione...</option>';
             (data.payment_terms || []).forEach(term => {
-                const selected = (Array.isArray(order.payment_term_id) && order.payment_term_id[0] === term.id) ? 'selected' : '';
+                const selected = (Array.isArray(invoice.invoice_payment_term_id) && invoice.invoice_payment_term_id[0] === term.id) ? 'selected' : '';
                 selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
             });
 
@@ -642,7 +642,7 @@
 
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
-            alert('Erro ao carregar detalhes do pedido.');
+            alert('Erro ao carregar detalhes da fatura.');
         }
     }
 
@@ -659,7 +659,7 @@
             tbody.innerHTML += `
                 <tr class="line-row" data-line-id="${line.id || ''}">
                     <td><select class="line-product" ${editavel ? '' : 'disabled'} onchange="recalcularTotais()">${options}</select></td>
-                    <td><input type="number" class="line-qty" value="${line.product_uom_qty || 1}" step="1" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
+                    <td><input type="number" class="line-qty" value="${line.quantity || 1}" step="1" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
                     <td><input type="number" class="line-price" value="${line.price_unit || 0}" step="0.01" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
                     <td class="line-subtotal" style="font-weight:bold;">R$ ${(line.price_subtotal || 0).toFixed(2)}</td>
                 </tr>
@@ -686,9 +686,9 @@
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
         if (emEdicao) {
-            container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar (Salvar & Travar)</button>`;
+            container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar</button>`;
         } else {
-            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Editar (Destravar)</button>`;
+            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
         }
     }
 
@@ -704,10 +704,14 @@
             document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
             document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
 
+            const statusBadge = document.getElementById('saleStatusBadge');
+            statusBadge.innerText = 'Provisório';
+            statusBadge.className = 'status-badge status-draft';
+
             atualizarBotoesAcao(true);
-            alert('Venda destravada para edição!');
+            alert('Fatura retornou para o status Provisório! Agora você pode editar os campos.');
         } catch (e) {
-            alert('Erro ao destravar a venda.');
+            alert('Erro ao alterar status para Provisório.');
         }
     }
 
@@ -734,17 +738,11 @@
                 })
             });
 
-            await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: true })
-            });
-
             fecharSaleModal();
-            alert('Edição salva e pedido travado com sucesso!');
+            alert('Fatura atualizada e Confirmada (Lançada) com sucesso!');
             buscarVendas();
         } catch (e) {
-            alert('Erro ao salvar e travar pedido.');
+            alert('Erro ao confirmar fatura.');
         }
     }
 
