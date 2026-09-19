@@ -26,7 +26,6 @@
         header h1 { color: var(--primary-color); font-size: 26px; margin-bottom: 5px; }
         header p { color: #666; font-size: 14px; }
 
-        /* Menu da Tela Inicial */
         .home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 10px; gap: 20px; text-align: center; }
         .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 600px; flex-wrap: wrap; }
         .btn-menu { flex: 1; min-width: 140px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
@@ -71,6 +70,14 @@
 
         .view-section { display: none; }
         .active-section { display: block !important; }
+
+        /* Estilo do Autocomplete de Cliente Odoo Style */
+        .partner-search-container { position: relative; width: 100%; }
+        .partner-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 200px; overflow-y: auto; z-index: 1100; display: none; }
+        .partner-dropdown-item { padding: 10px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+        .partner-dropdown-item:hover { background-color: #f4f6f9; }
+        .partner-create-item { font-weight: bold; color: var(--primary-color); background-color: #fdf8fc; }
+        .partner-create-item:hover { background-color: #f7eaf4; }
     </style>
 </head>
 <body>
@@ -181,75 +188,23 @@
     </div>
 </div>
 
-<!-- Modal: Editar Produto -->
-<div class="modal-overlay" id="editModal">
-    <div class="modal">
-        <h2>Editar Produto</h2>
-        <input type="hidden" id="editId">
+<!-- Modal: Criar Novo Cliente/Parceiro no Odoo -->
+<div class="modal-overlay" id="createPartnerModal" style="z-index: 1200;">
+    <div class="modal" style="max-width: 420px;">
+        <h2>Criar Parceiro</h2>
         
-        <label>Descrição / Nome</label>
-        <input type="text" id="editName">
+        <label>Nome do Cliente *</label>
+        <input type="text" id="newPartnerName">
 
-        <label>Categoria</label>
-        <select id="editCategory">
-            <option value="">Carregando categorias...</option>
-        </select>
+        <label>E-mail</label>
+        <input type="email" id="newPartnerEmail" placeholder="exemplo@email.com">
 
-        <label>Preço de Venda (R$)</label>
-        <input type="number" step="0.01" id="editPrice">
-
-        <label>Preço de Custo (R$)</label>
-        <input type="number" step="0.01" id="editCost">
+        <label>Telefone</label>
+        <input type="text" id="newPartnerPhone" placeholder="(00) 00000-0000">
 
         <div class="modal-actions">
-            <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
-            <button class="btn-save" id="btnSalvar" onclick="salvarAlteracao()">Salvar no Odoo</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: Nova Venda (Fatura) -->
-<div class="modal-overlay" id="newSaleModal">
-    <div class="modal" style="max-width: 700px;">
-        <h2>Nova Venda (Fatura)</h2>
-        
-        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 200px;">
-                <label>Cliente</label>
-                <select id="newSalePartner"></select>
-            </div>
-            <div style="flex: 1; min-width: 200px;">
-                <label>Condição de Pagamento</label>
-                <select id="newSalePaymentTerm"></select>
-            </div>
-        </div>
-
-        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas da Fatura</h3>
-        
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>PRODUTO</th>
-                        <th style="width: 90px;">QTD</th>
-                        <th style="width: 110px;">PREÇO UNI</th>
-                        <th>TOTAL</th>
-                        <th style="width: 40px;"></th>
-                    </tr>
-                </thead>
-                <tbody id="newSaleLinesBody"></tbody>
-            </table>
-        </div>
-
-        <button style="background:#eee; border:1px dashed #aaa; padding:8px; border-radius:6px; cursor:pointer; font-weight:bold; color:#444;" onclick="adicionarLinhaNovaVenda()">+ Adicionar Linha</button>
-
-        <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
-            Valor Total: <span id="newSaleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
-        </div>
-
-        <div class="modal-actions">
-            <button class="btn-cancel" onclick="fecharNovaVendaModal()">Cancelar</button>
-            <button class="btn-save" id="btnConfirmarNovaVenda" onclick="confirmarCriacaoVenda()">Confirmar (Lançar)</button>
+            <button class="btn-cancel" onclick="fecharModalParceiro()">Descartar</button>
+            <button class="btn-save" id="btnSalvarParceiro" onclick="salvarNovoParceiroOdoo()">Salvar</button>
         </div>
     </div>
 </div>
@@ -263,9 +218,11 @@
         </div>
         
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 180px;">
+            <div style="flex: 1; min-width: 220px;" class="partner-search-container">
                 <label>Cliente</label>
-                <select id="saleCustomer" disabled></select>
+                <input type="text" id="saleCustomerInput" placeholder="Buscar ou criar cliente..." oninput="buscarParceiroOdoo(this.value)" autocomplete="off" disabled>
+                <input type="hidden" id="saleCustomerId">
+                <div id="partnerDropdown" class="partner-dropdown"></div>
             </div>
             <div style="flex: 1; min-width: 180px;">
                 <label>Condição de Pagamento</label>
@@ -299,11 +256,9 @@
 
 <script>
     let timer = null;
-    let produtosCarregados = [];
+    let partnerSearchTimer = null;
     let currentOrderId = null;
     let availableProducts = [];
-    let availablePartners = [];
-    let availablePaymentTerms = [];
 
     function mostrarTela(idTela) {
         document.getElementById('homeSection').style.display = 'none';
@@ -322,127 +277,6 @@
             if (tipo === 'estoque') buscarEstoque();
             if (tipo === 'vendas') buscarVendas();
         }, 300);
-    }
-
-    async function carregarCategorias() {
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "get_categories" })
-            });
-            const data = await response.json();
-            if (data.categories) {
-                const selectCat = document.getElementById("editCategory");
-                selectCat.innerHTML = "";
-                data.categories.forEach(cat => {
-                    selectCat.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
-                });
-            }
-        } catch (e) {
-            console.error("Erro ao carregar categorias", e);
-        }
-    }
-
-    async function buscarProdutos() {
-        const query = document.getElementById("searchInput").value.trim();
-        const status = document.getElementById("statusProdutos");
-        const results = document.getElementById("resultsProdutos");
-
-        status.innerText = "Pesquisando produtos...";
-
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "search", query })
-            });
-
-            const data = await response.json();
-
-            if (!data.result || data.result.length === 0) {
-                status.innerText = "Nenhum produto encontrado.";
-                results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">Nenhum produto encontrado</td></tr>`;
-                return;
-            }
-
-            produtosCarregados = data.result;
-            status.innerText = `${data.result.length} produto(s) encontrado(s):`;
-            results.innerHTML = "";
-
-            data.result.forEach(prod => {
-                const stock = prod.qty_available ?? 0;
-                const price = prod.list_price ?? 0;
-                const cost = prod.standard_price ?? 0;
-                const categoryName = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "Sem Categoria";
-                const hasStock = stock > 0;
-
-                results.innerHTML += `
-                    <tr>
-                        <td><strong>${prod.name}</strong></td>
-                        <td><span class="category-badge">${categoryName}</span></td>
-                        <td class="price-col">R$ ${price.toFixed(2)}</td>
-                        <td class="cost-col">R$ ${cost.toFixed(2)}</td>
-                        <td>
-                            <span class="stock-badge ${hasStock ? 'stock-in' : 'stock-out'}">
-                                ${hasStock ? `${Number(stock)} un` : 'Esgotado'}
-                            </span>
-                        </td>
-                        <td>
-                            <button class="btn-edit" onclick="abrirModal(${prod.id})">Editar</button>
-                        </td>
-                    </tr>
-                `;
-            });
-        } catch (e) {
-            status.innerText = "Erro ao carregar produtos.";
-            results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
-        }
-    }
-
-    async function buscarEstoque() {
-        const query = document.getElementById("searchEstoqueInput").value.trim();
-        const status = document.getElementById("statusEstoque");
-        const results = document.getElementById("resultsEstoque");
-
-        status.innerText = "Pesquisando estoque...";
-
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "get_stock", query })
-            });
-
-            const data = await response.json();
-            const estoquesValidos = (data.result || []).filter(item => (item.quantity ?? 0) > 0);
-
-            if (estoquesValidos.length === 0) {
-                status.innerText = "Nenhum registro de estoque disponível.";
-                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhum registro encontrado</td></tr>`;
-                return;
-            }
-
-            status.innerText = `${estoquesValidos.length} registro(s) encontrado(s):`;
-            results.innerHTML = "";
-
-            estoquesValidos.forEach(item => {
-                const location = Array.isArray(item.location_id) ? item.location_id[1] : "-";
-                const product = Array.isArray(item.product_id) ? item.product_id[1] : "-";
-                const qty = item.quantity ?? 0;
-
-                results.innerHTML += `
-                    <tr>
-                        <td><strong>${location}</strong></td>
-                        <td>${product}</td>
-                        <td><strong>${Number(qty)}</strong></td>
-                    </tr>
-                `;
-            });
-        } catch (e) {
-            status.innerText = "Erro ao carregar estoque.";
-            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
-        }
     }
 
     async function buscarVendas() {
@@ -495,118 +329,7 @@
         }
     }
 
-    /* CRIAR NOVA VENDA (FATURA) */
-    async function abrirNovaVendaModal() {
-        try {
-            const res = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "get_new_sale_data" })
-            });
-            const data = await res.json();
-            
-            availablePartners = data.partners || [];
-            availablePaymentTerms = data.paymentTerms || [];
-            availableProducts = data.products || [];
-
-            const partnerSelect = document.getElementById('newSalePartner');
-            partnerSelect.innerHTML = availablePartners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-
-            const termSelect = document.getElementById('newSalePaymentTerm');
-            termSelect.innerHTML = '<option value="">Selecione...</option>' + 
-                availablePaymentTerms.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-
-            document.getElementById('newSaleLinesBody').innerHTML = '';
-            adicionarLinhaNovaVenda();
-            
-            document.getElementById('newSaleModal').style.display = 'flex';
-        } catch (e) {
-            alert('Erro ao abrir formulário de nova fatura.');
-        }
-    }
-
-    function fecharNovaVendaModal() {
-        document.getElementById('newSaleModal').style.display = 'none';
-    }
-
-    function adicionarLinhaNovaVenda() {
-        const tbody = document.getElementById('newSaleLinesBody');
-        let productOptions = availableProducts.map(p => `<option value="${p.id}" data-price="${p.list_price}">${p.display_name}</option>`).join('');
-
-        const row = document.createElement('tr');
-        row.className = 'new-line-row';
-        row.innerHTML = `
-            <td><select class="new-line-product" onchange="atualizarPrecoLinhaNovaVenda(this)">${productOptions}</select></td>
-            <td><input type="number" class="new-line-qty" value="1" min="1" oninput="recalcularNovaVenda()"></td>
-            <td><input type="number" class="new-line-price" value="${availableProducts[0]?.list_price || 0}" step="0.01" oninput="recalcularNovaVenda()"></td>
-            <td class="new-line-subtotal" style="font-weight:bold;">R$ ${(availableProducts[0]?.list_price || 0).toFixed(2)}</td>
-            <td><button onclick="this.closest('tr').remove(); recalcularNovaVenda();" style="background:red; color:white; border:none; border-radius:4px; cursor:pointer; padding:2px 6px;">✕</button></td>
-        `;
-        tbody.appendChild(row);
-        recalcularNovaVenda();
-    }
-
-    function atualizarPrecoLinhaNovaVenda(selectEl) {
-        const selectedOpt = selectEl.options[selectEl.selectedIndex];
-        const price = parseFloat(selectedOpt.getAttribute('data-price')) || 0;
-        const row = selectEl.closest('tr');
-        row.querySelector('.new-line-price').value = price;
-        recalcularNovaVenda();
-    }
-
-    function recalcularNovaVenda() {
-        let total = 0;
-        document.querySelectorAll('.new-line-row').forEach(row => {
-            const qty = parseFloat(row.querySelector('.new-line-qty').value) || 0;
-            const price = parseFloat(row.querySelector('.new-line-price').value) || 0;
-            const subtotal = qty * price;
-            row.querySelector('.new-line-subtotal').innerText = `R$ ${subtotal.toFixed(2)}`;
-            total += subtotal;
-        });
-        document.getElementById('newSaleTotalVal').innerText = `R$ ${total.toFixed(2)}`;
-    }
-
-    async function confirmarCriacaoVenda() {
-        const btn = document.getElementById('btnConfirmarNovaVenda');
-        btn.innerText = "Lançando...";
-        btn.disabled = true;
-
-        const partner_id = document.getElementById('newSalePartner').value;
-        const payment_term_id = document.getElementById('newSalePaymentTerm').value;
-        
-        const lines = [];
-        document.querySelectorAll('.new-line-row').forEach(row => {
-            lines.push({
-                product_id: row.querySelector('.new-line-product').value,
-                qty: row.querySelector('.new-line-qty').value,
-                price: row.querySelector('.new-line-price').value
-            });
-        });
-
-        try {
-            const resCreate = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'create_sale', partner_id, payment_term_id, lines })
-            });
-            const dataCreate = await resCreate.json();
-
-            if (dataCreate.success) {
-                fecharNovaVendaModal();
-                alert(`Fatura N° ${dataCreate.name} criada e lançada com sucesso!`);
-                buscarVendas();
-            } else {
-                alert('Erro ao criar fatura.');
-            }
-        } catch (e) {
-            alert('Erro na requisição ao criar fatura.');
-        } finally {
-            btn.innerText = "Confirmar (Lançar)";
-            btn.disabled = false;
-        }
-    }
-
-    /* EDITAR FATURA EXISTENTE */
+    /* DETALHES DA FATURA E BUSCA/CRIAÇÃO DE PARCEIRO */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
         try {
@@ -621,21 +344,18 @@
 
             const invoice = data.order;
             availableProducts = data.products || [];
-            availablePartners = data.partners || [];
 
             document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name}`;
             
-            // Popula e seleciona o Cliente correto
-            const selectCustomer = document.getElementById('saleCustomer');
+            // Preenche o cliente atual
             const currentPartnerId = Array.isArray(invoice.partner_id) ? invoice.partner_id[0] : invoice.partner_id;
+            const currentPartnerName = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : "";
             
-            selectCustomer.innerHTML = availablePartners.map(p => 
-                `<option value="${p.id}" ${p.id === currentPartnerId ? 'selected' : ''}>${p.name}</option>`
-            ).join('');
+            document.getElementById('saleCustomerId').value = currentPartnerId || "";
+            document.getElementById('saleCustomerInput').value = currentPartnerName || "";
 
-            const statusBadge = document.getElementById('saleStatusBadge');
             const isPosted = invoice.state === 'posted';
-            
+            const statusBadge = document.getElementById('saleStatusBadge');
             statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
             statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
 
@@ -646,9 +366,9 @@
                 selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
             });
 
-            // Se for Provisório, habilita o cliente e o termo de pagamento. Se for Lançado, bloqueia.
+            // Se for Provisório, habilita o campo de busca de parceiro e condições. Se for Lançado, bloqueia.
             const editavel = !isPosted;
-            selectCustomer.disabled = !editavel;
+            document.getElementById('saleCustomerInput').disabled = !editavel;
             selectTerm.disabled = !editavel;
 
             renderLines(data.lines || [], editavel);
@@ -659,6 +379,112 @@
             alert('Erro ao carregar detalhes da fatura.');
         }
     }
+
+    function buscarParceiroOdoo(query) {
+        clearTimeout(partnerSearchTimer);
+        const dropdown = document.getElementById('partnerDropdown');
+        
+        if (!query.trim()) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        partnerSearchTimer = setTimeout(async () => {
+            try {
+                const res = await fetch('/api/odoo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'search_partners', query })
+                });
+                const data = await res.json();
+                
+                dropdown.innerHTML = '';
+                
+                // Opção Estilo Odoo para "Criar e Editar..."
+                dropdown.innerHTML += `
+                    <div class="partner-dropdown-item partner-create-item" onclick="abrirModalCriarParceiro('${query.trim()}')">
+                        + Criar e Editar "${query.trim()}"...
+                    </div>
+                `;
+
+                if (data.partners && data.partners.length > 0) {
+                    data.partners.forEach(p => {
+                        dropdown.innerHTML += `
+                            <div class="partner-dropdown-item" onclick="selecionarParceiro(${p.id}, '${p.name.replace(/'/g, "\\'")}')">
+                                ${p.name}
+                            </div>
+                        `;
+                    });
+                }
+
+                dropdown.style.display = 'block';
+            } catch (e) {
+                console.error("Erro na busca de parceiros", e);
+            }
+        }, 250);
+    }
+
+    function selecionarParceiro(id, name) {
+        document.getElementById('saleCustomerId').value = id;
+        document.getElementById('saleCustomerInput').value = name;
+        document.getElementById('partnerDropdown').style.display = 'none';
+    }
+
+    function abrirModalCriarParceiro(nomeDigitado) {
+        document.getElementById('partnerDropdown').style.display = 'none';
+        document.getElementById('newPartnerName').value = nomeDigitado || "";
+        document.getElementById('newPartnerEmail').value = "";
+        document.getElementById('newPartnerPhone').value = "";
+        document.getElementById('createPartnerModal').style.display = 'flex';
+    }
+
+    function fecharModalParceiro() {
+        document.getElementById('createPartnerModal').style.display = 'none';
+    }
+
+    async function salvarNovoParceiroOdoo() {
+        const name = document.getElementById('newPartnerName').value;
+        const email = document.getElementById('newPartnerEmail').value;
+        const phone = document.getElementById('newPartnerPhone').value;
+        const btn = document.getElementById('btnSalvarParceiro');
+
+        if (!name.trim()) return alert("O nome do cliente é obrigatório.");
+
+        btn.innerText = "Salvando...";
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'create_partner', name, email, phone })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                // Atribui automaticamente o cliente recém-criado na tela
+                selecionarParceiro(data.id, data.name);
+                fecharModalParceiro();
+                alert(`Cliente "${data.name}" cadastrado e salvo com sucesso no Odoo!`);
+            } else {
+                alert(data.error || 'Erro ao criar parceiro.');
+            }
+        } catch (e) {
+            alert('Erro ao conectar com a API do Odoo.');
+        } finally {
+            btn.innerText = "Salvar";
+            btn.disabled = false;
+        }
+    }
+
+    // Ocultar dropdown ao clicar fora
+    document.addEventListener('click', function(e) {
+        const container = document.querySelector('.partner-search-container');
+        if (container && !container.contains(e.target)) {
+            document.getElementById('partnerDropdown').style.display = 'none';
+        }
+    });
 
     function renderLines(lines, editavel) {
         const tbody = document.getElementById('saleLinesBody');
@@ -700,10 +526,8 @@
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
         if (isPosted) {
-            // Se a fatura estiver LANÇADA: exibe o botão "Voltar para Provisório"
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
         } else {
-            // Se a fatura estiver PROVISÓRIA: exibe o botão "Confirmar"
             container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar</button>`;
         }
     }
@@ -716,7 +540,7 @@
                 body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: false })
             });
 
-            document.getElementById('saleCustomer').disabled = false;
+            document.getElementById('saleCustomerInput').disabled = false;
             document.getElementById('salePaymentTerm').disabled = false;
             document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
             document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
@@ -725,7 +549,6 @@
             statusBadge.innerText = 'Provisório';
             statusBadge.className = 'status-badge status-draft';
 
-            // Altera botão para "Confirmar"
             atualizarBotoesAcao(false);
             alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Confirmar.');
         } catch (e) {
@@ -751,7 +574,7 @@
                 body: JSON.stringify({
                     action: 'update_sale',
                     order_id: currentOrderId,
-                    partner_id: document.getElementById('saleCustomer').value,
+                    partner_id: document.getElementById('saleCustomerId').value,
                     payment_term_id: document.getElementById('salePaymentTerm').value,
                     lines: linesData
                 })
@@ -768,72 +591,6 @@
     function fecharSaleModal() {
         document.getElementById('saleModal').style.display = 'none';
     }
-
-    /* PRODUTOS */
-    function abrirModal(id) {
-        const prod = produtosCarregados.find(p => p.id === id);
-        if (!prod) return;
-
-        document.getElementById('editId').value = prod.id;
-        document.getElementById('editName').value = prod.name;
-        document.getElementById('editPrice').value = prod.list_price;
-        document.getElementById('editCost').value = prod.standard_price;
-
-        const catId = Array.isArray(prod.categ_id) ? prod.categ_id[0] : "";
-        document.getElementById('editCategory').value = catId;
-
-        document.getElementById('editModal').style.display = 'flex';
-    }
-
-    function fecharModal() {
-        document.getElementById('editModal').style.display = 'none';
-    }
-
-    async function salvarAlteracao() {
-        const id = document.getElementById('editId').value;
-        const name = document.getElementById('editName').value;
-        const list_price = document.getElementById('editPrice').value;
-        const standard_price = document.getElementById('editCost').value;
-        const categ_id = document.getElementById('editCategory').value;
-        const btnSalvar = document.getElementById('btnSalvar');
-
-        btnSalvar.innerText = "Salvando...";
-        btnSalvar.disabled = true;
-
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'update',
-                    id: Number(id),
-                    name: name,
-                    list_price: parseFloat(list_price),
-                    standard_price: parseFloat(standard_price),
-                    categ_id: Number(categ_id)
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.error) {
-                alert(`Erro ao salvar: ${data.error}`);
-            } else {
-                alert('Produto atualizado com sucesso no Odoo!');
-                fecharModal();
-                buscarProdutos();
-            }
-        } catch (err) {
-            alert('Erro de conexão ao salvar alterações.');
-        } finally {
-            btnSalvar.innerText = "Salvar no Odoo";
-            btnSalvar.disabled = false;
-        }
-    }
-
-    window.onload = () => {
-        carregarCategorias();
-    };
 </script>
 
 </body>
