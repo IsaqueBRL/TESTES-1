@@ -66,7 +66,7 @@
         .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 
         .view-section { display: none; }
-        .active-section { display: block; }
+        .active-section { display: block !important; }
     </style>
 </head>
 <body>
@@ -212,7 +212,14 @@
         document.getElementById('estoqueSection').classList.remove('active-section');
         document.getElementById('vendasSection').classList.remove('active-section');
 
-        document.getElementById(idTela).classList.add('active-section');
+        document.getElementById('homeSection').style.display = 'none';
+        document.getElementById('produtosSection').style.display = 'none';
+        document.getElementById('estoqueSection').style.display = 'none';
+        document.getElementById('vendasSection').style.display = 'none';
+
+        const telaTarget = document.getElementById(idTela);
+        telaTarget.classList.add('active-section');
+        telaTarget.style.display = 'block';
     }
 
     async function carregarCategorias() {
