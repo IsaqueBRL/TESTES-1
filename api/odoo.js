@@ -30,7 +30,7 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: "Falha na autenticação com o Odoo." });
         }
 
-        // AÇÃO: Buscar Categorias
+        // 1. BUSCAR CATEGORIAS
         if (action === "get_categories") {
             const catRes = await fetch(ODOO_URL, {
                 method: "POST",
@@ -56,9 +56,14 @@ export default async function handler(req, res) {
             return res.status(200).json({ categories: catData.result || [] });
         }
 
-        // AÇÃO: Buscar Vendas Confirmadas (sale.order com state = 'sale')
+        // 2. BUSCAR LISTA DE VENDAS
         if (action === "get_sales") {
             const query = body.query || "";
+            const domain = [["state", "=", "sale"]];
+            if (query) {
+                domain.push("|", ["name", "ilike", query], ["partner_id.name", "ilike", query]);
+            }
+
             const salesRes = await fetch(ODOO_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -71,12 +76,7 @@ export default async function handler(req, res) {
                         args: [
                             ODOO_DB, uid, ODOO_API_KEY,
                             "sale.order", "search_read",
-                            [[
-                                ["state", "=", "sale"],
-                                "|" ,
-                                ["name", "ilike", query],
-                                ["partner_id.name", "ilike", query]
-                            ]],
+                            [domain],
                             { 
                                 fields: ["id", "name", "partner_id", "amount_total"], 
                                 order: "id desc",
@@ -92,7 +92,177 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: salesData.result || [] });
         }
 
-        // AÇÃO: Buscar Estoque Detalhado (stock.quant) - FILTRANDO ZERADOS
+        // 3. OBTER DETALHES DE UMA VENDA ESPECÍFICA
+        if (action === "get_sale_detail") {
+            const order_id = body.order_id;
+
+            // Busca pedido
+            const orderRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "sale.order", "search_read",
+                            [[["id", "=", order_id]]],
+                            { fields: ["id", "name", "partner_id", "date_order", "payment_term_id", "amount_total", "order_line"] }
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+            const orderData = await orderRes.json();
+            if (!orderData.result || orderData.result.length === 0) {
+                return res.status(404).json({ error: "Pedido não encontrado" });
+            }
+
+            const order = orderData.result[0];
+            const lineIds = order.order_line || [];
+
+            // Busca linhas do pedido
+            let lines = [];
+            if (lineIds.length > 0) {
+                const linesRes = await fetch(ODOO_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        method: "call",
+                        params: {
+                            service: "object",
+                            method: "execute_kw",
+                            args: [
+                                ODOO_DB, uid, ODOO_API_KEY,
+                                "sale.order.line", "search_read",
+                                [[["id", "in", lineIds]]],
+                                { fields: ["id", "product_id", "product_uom_qty", "price_unit", "discount", "price_subtotal"] }
+                            ]
+                        },
+                        id: Date.now()
+                    })
+                });
+                const linesData = await linesRes.json();
+                lines = linesData.result || [];
+            }
+
+            // Busca condições de pagamento
+            const termRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "account.payment.term", "search_read",
+                            [[]],
+                            { fields: ["id", "name"] }
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+            const termData = await termRes.json();
+
+            // Busca produtos elegíveis
+            const prodRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "product.product", "search_read",
+                            [[["sale_ok", "=", true]]],
+                            { fields: ["id", "display_name", "list_price"] }
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+            const prodData = await prodRes.json();
+
+            return res.status(200).json({
+                order,
+                lines,
+                payment_terms: termData.result || [],
+                products: prodData.result || []
+            });
+        }
+
+        // 4. ATUALIZAR PEDIDO DE VENDA
+        if (action === "update_sale") {
+            const { order_id, date_order, payment_term_id, lines } = body;
+
+            const updateVals = {};
+            if (date_order) updateVals.date_order = date_order;
+            if (payment_term_id) updateVals.payment_term_id = Number(payment_term_id);
+
+            if (Object.keys(updateVals).length > 0) {
+                await fetch(ODOO_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        method: "call",
+                        params: {
+                            service: "object",
+                            method: "execute_kw",
+                            args: [
+                                ODOO_DB, uid, ODOO_API_KEY,
+                                "sale.order", "write",
+                                [[Number(order_id)], updateVals]
+                            ]
+                        },
+                        id: Date.now()
+                    })
+                });
+            }
+
+            for (const line of lines || []) {
+                if (line.id) {
+                    await fetch(ODOO_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            jsonrpc: "2.0",
+                            method: "call",
+                            params: {
+                                service: "object",
+                                method: "execute_kw",
+                                args: [
+                                    ODOO_DB, uid, ODOO_API_KEY,
+                                    "sale.order.line", "write",
+                                    [[Number(line.id)], {
+                                        product_id: Number(line.product_id),
+                                        product_uom_qty: parseFloat(line.qty),
+                                        price_unit: parseFloat(line.price),
+                                        discount: parseFloat(line.discount)
+                                    }]
+                                ]
+                            },
+                            id: Date.now()
+                        })
+                    });
+                }
+            }
+
+            return res.status(200).json({ success: true });
+        }
+
+        // 5. BUSCAR ESTOQUE
         if (action === "get_stock") {
             const query = body.query || "";
             const stockRes = await fetch(ODOO_URL, {
@@ -126,7 +296,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: stockData.result || [] });
         }
 
-        // AÇÃO: Atualizar Produto
+        // 6. ATUALIZAR PRODUTO
         if (action === "update") {
             const { id, name, list_price, standard_price, categ_id } = body;
 
@@ -162,31 +332,10 @@ export default async function handler(req, res) {
                 })
             });
 
-            if (novoNome) {
-                await fetch(ODOO_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        jsonrpc: "2.0",
-                        method: "call",
-                        params: {
-                            service: "object",
-                            method: "execute_kw",
-                            args: [
-                                ODOO_DB, uid, ODOO_API_KEY,
-                                "product.template", "write",
-                                [[Number(id)], { name: novoNome }]
-                            ]
-                        },
-                        id: Date.now()
-                    })
-                });
-            }
-
             return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
         }
 
-        // AÇÃO: Pesquisar Produtos
+        // 7. PESQUISAR PRODUTOS (Padrão)
         const query = body.query || "";
         const prodRes = await fetch(ODOO_URL, {
             method: "POST",
