@@ -265,7 +265,7 @@
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 180px;">
                 <label>Cliente</label>
-                <input type="text" id="saleCustomer" readonly style="background: #e9ecef;">
+                <select id="saleCustomer" disabled></select>
             </div>
             <div style="flex: 1; min-width: 180px;">
                 <label>Condição de Pagamento</label>
@@ -621,9 +621,17 @@
 
             const invoice = data.order;
             availableProducts = data.products || [];
+            availablePartners = data.partners || [];
 
             document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name}`;
-            document.getElementById('saleCustomer').value = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : "";
+            
+            // Popula e seleciona o Cliente correto
+            const selectCustomer = document.getElementById('saleCustomer');
+            const currentPartnerId = Array.isArray(invoice.partner_id) ? invoice.partner_id[0] : invoice.partner_id;
+            
+            selectCustomer.innerHTML = availablePartners.map(p => 
+                `<option value="${p.id}" ${p.id === currentPartnerId ? 'selected' : ''}>${p.name}</option>`
+            ).join('');
 
             const statusBadge = document.getElementById('saleStatusBadge');
             const isPosted = invoice.state === 'posted';
@@ -638,8 +646,9 @@
                 selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
             });
 
-            // Se estiver em Provisório, abre liberado. Se estiver em Lançado, abre bloqueado.
+            // Se for Provisório, habilita o cliente e o termo de pagamento. Se for Lançado, bloqueia.
             const editavel = !isPosted;
+            selectCustomer.disabled = !editavel;
             selectTerm.disabled = !editavel;
 
             renderLines(data.lines || [], editavel);
@@ -707,6 +716,7 @@
                 body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: false })
             });
 
+            document.getElementById('saleCustomer').disabled = false;
             document.getElementById('salePaymentTerm').disabled = false;
             document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
             document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
@@ -717,7 +727,7 @@
 
             // Altera botão para "Confirmar"
             atualizarBotoesAcao(false);
-            alert('Fatura retornou para o status Provisório! Edite os campos e clique em Confirmar.');
+            alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Confirmar.');
         } catch (e) {
             alert('Erro ao alterar status para Provisório.');
         }
@@ -741,6 +751,7 @@
                 body: JSON.stringify({
                     action: 'update_sale',
                     order_id: currentOrderId,
+                    partner_id: document.getElementById('saleCustomer').value,
                     payment_term_id: document.getElementById('salePaymentTerm').value,
                     lines: linesData
                 })
