@@ -47,6 +47,14 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
+        // AÇÃO: Criar Nova Venda / Fatura
+        if (action === "create_sale") {
+            const newInvoiceId = await execute("account.move", "create", [{
+                move_type: "out_invoice"
+            }]);
+            return res.status(200).json({ success: true, id: newInvoiceId });
+        }
+
         // AÇÃO: Buscar Parceiros (Clientes)
         if (action === "search_partners") {
             const query = body.query || "";
