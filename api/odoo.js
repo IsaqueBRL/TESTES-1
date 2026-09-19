@@ -56,6 +56,42 @@ export default async function handler(req, res) {
             return res.status(200).json({ categories: catData.result || [] });
         }
 
+        // AÇÃO: Buscar Vendas Confirmadas (sale.order com state = 'sale')
+        if (action === "get_sales") {
+            const query = body.query || "";
+            const salesRes = await fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [
+                            ODOO_DB, uid, ODOO_API_KEY,
+                            "sale.order", "search_read",
+                            [[
+                                ["state", "=", "sale"],
+                                "|" ,
+                                ["name", "ilike", query],
+                                ["partner_id.name", "ilike", query]
+                            ]],
+                            { 
+                                fields: ["id", "name", "partner_id", "amount_total"], 
+                                order: "id desc",
+                                limit: 100 
+                            }
+                        ]
+                    },
+                    id: Date.now()
+                })
+            });
+
+            const salesData = await salesRes.json();
+            return res.status(200).json({ result: salesData.result || [] });
+        }
+
         // AÇÃO: Buscar Estoque Detalhado (stock.quant) - FILTRANDO ZERADOS
         if (action === "get_stock") {
             const query = body.query || "";
