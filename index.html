@@ -158,7 +158,10 @@
     <div id="vendasSection" class="view-section">
         <div class="top-nav">
             <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
-            <h2>Faturas de Vendas</h2>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h2>Faturas de Vendas</h2>
+                <button class="btn-action" onclick="criarNovaVenda()">+ Nova Venda</button>
+            </div>
         </div>
 
         <div class="search-box">
@@ -420,7 +423,29 @@
         }
     }
 
-    /* 4. DETALHES DA FATURA E PARCEIROS */
+    /* 4. CRIAR NOVA VENDA */
+    async function criarNovaVenda() {
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "create_sale" })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.id) {
+                abrirDetalhesVenda(data.id);
+                buscarVendas();
+            } else {
+                alert(data.error || "Erro ao criar nova venda.");
+            }
+        } catch (e) {
+            alert("Erro de conexão ao tentar criar nova venda.");
+        }
+    }
+
+    /* 5. DETALHES DA FATURA E PARCEIROS */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
         try {
@@ -436,7 +461,7 @@
             const invoice = data.order;
             availableProducts = data.products || [];
 
-            document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name}`;
+            document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name || 'Nova'}`;
             
             const currentPartnerId = Array.isArray(invoice.partner_id) ? invoice.partner_id[0] : invoice.partner_id;
             const currentPartnerName = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : "";
