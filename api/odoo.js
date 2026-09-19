@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const action = body.action || "search";
+    const action = body.action || "get_products";
 
     try {
         const authRes = await fetch(ODOO_URL, {
@@ -75,13 +75,20 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, id: newPartnerId, name: name.trim() });
         }
 
-        // AÇÃO: Buscar Categorias
-        if (action === "get_categories") {
-            const result = await execute("product.category", "search_read", [[]], { fields: ["id", "name"] });
-            return res.status(200).json({ categories: result || [] });
+        // AÇÃO: Buscar Estoque (stock.quant)
+        if (action === "get_stock") {
+            const query = body.query || "";
+            const domain = [["quantity", ">", 0]];
+            if (query) domain.push(["product_id.name", "ilike", query]);
+
+            const result = await execute("stock.quant", "search_read", [domain], {
+                fields: ["id", "location_id", "product_id", "quantity"],
+                limit: 100
+            });
+            return res.status(200).json({ result: result || [] });
         }
 
-        // AÇÃO: Buscar Faturas
+        // AÇÃO: Buscar Faturas de Vendas
         if (action === "get_sales") {
             const query = body.query || "";
             const domain = [["move_type", "=", "out_invoice"]];
@@ -95,36 +102,6 @@ export default async function handler(req, res) {
                 limit: 100
             });
             return res.status(200).json({ result: result || [] });
-        }
-
-        // AÇÃO: Dados para Nova Fatura
-        if (action === "get_new_sale_data") {
-            const partners = await execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 });
-            const paymentTerms = await execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] });
-            const products = await execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] });
-            return res.status(200).json({ partners: partners || [], paymentTerms: paymentTerms || [], products: products || [] });
-        }
-
-        // AÇÃO: Criar e Confirmar Fatura
-        if (action === "create_sale") {
-            const { partner_id, payment_term_id, lines } = body;
-            const lineCommands = lines.map(l => [0, 0, {
-                product_id: Number(l.product_id),
-                quantity: Number(l.qty),
-                price_unit: Number(l.price)
-            }]);
-
-            const newInvoiceId = await execute("account.move", "create", [{
-                move_type: "out_invoice",
-                partner_id: Number(partner_id),
-                invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false,
-                invoice_line_ids: lineCommands
-            }]);
-
-            await execute("account.move", "action_post", [[newInvoiceId]]);
-            const invoiceInfo = await execute("account.move", "search_read", [[["id", "=", newInvoiceId]]], { fields: ["name"] });
-
-            return res.status(200).json({ success: true, id: newInvoiceId, name: invoiceInfo[0]?.name || newInvoiceId });
         }
 
         // AÇÃO: Detalhes de uma Fatura
@@ -184,20 +161,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Buscar Estoque
-        if (action === "get_stock") {
-            const query = body.query || "";
-            const domain = [["location_id.usage", "=", "internal"], ["quantity", ">", 0]];
-            if (query) domain.push(["product_id.name", "ilike", query]);
-
-            const result = await execute("stock.quant", "search_read", [domain], {
-                fields: ["id", "location_id", "product_id", "quantity"],
-                limit: 100
-            });
-            return res.status(200).json({ result: result || [] });
-        }
-
-        // AÇÃO PADRÃO: Pesquisar Produtos
+        // AÇÃO PADRÃO / BUSCAR PRODUTOS (product.template)
         const query = body.query || "";
         const domain = query ? [["name", "ilike", query]] : [];
         const result = await execute("product.template", "search_read", [domain], {
