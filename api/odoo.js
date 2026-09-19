@@ -54,11 +54,15 @@ export default async function handler(req, res) {
             return res.status(200).json({ categories: result || [] });
         }
 
-        // AÇÃO: Buscar Vendas (Ajustado para retornar todas as vendas/cotações)
+        // AÇÃO: Buscar Faturas (Vendas via Fatura de Cliente - account.move)
         if (action === "get_sales") {
             const query = body.query || "";
-            const domain = query ? ['|', ['name', 'ilike', query], ['partner_id.name', 'ilike', query]] : [];
-            const result = await execute("sale.order", "search_read", [domain], {
+            const domain = [["move_type", "=", "out_invoice"]];
+            if (query) {
+                domain.push('|', ['name', 'ilike', query], ['partner_id.name', 'ilike', query]);
+            }
+
+            const result = await execute("account.move", "search_read", [domain], {
                 fields: ["id", "name", "partner_id", "amount_total", "state"],
                 order: "id desc",
                 limit: 100
@@ -66,7 +70,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: result || [] });
         }
 
-        // AÇÃO: Dados para Nova Venda
+        // AÇÃO: Dados para Nova Fatura
         if (action === "get_new_sale_data") {
             const partners = await execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 });
             const paymentTerms = await execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] });
@@ -74,70 +78,79 @@ export default async function handler(req, res) {
             return res.status(200).json({ partners: partners || [], paymentTerms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Criar e Confirmar Nova Venda
+        // AÇÃO: Criar e Confirmar Fatura (Postar/Lançar)
         if (action === "create_sale") {
             const { partner_id, payment_term_id, lines } = body;
             const lineCommands = lines.map(l => [0, 0, {
                 product_id: Number(l.product_id),
-                product_uom_qty: Number(l.qty),
+                quantity: Number(l.qty),
                 price_unit: Number(l.price)
             }]);
 
-            const newOrderId = await execute("sale.order", "create", [{
+            const newInvoiceId = await execute("account.move", "create", [{
+                move_type: "out_invoice",
                 partner_id: Number(partner_id),
-                payment_term_id: payment_term_id ? Number(payment_term_id) : false,
-                order_line: lineCommands
+                invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false,
+                invoice_line_ids: lineCommands
             }]);
 
-            // Confirma o pedido automaticamente
-            await execute("sale.order", "action_confirm", [[newOrderId]]);
-            const orderInfo = await execute("sale.order", "search_read", [[["id", "=", newOrderId]]], { fields: ["name"] });
+            // Confirma/Lança a Fatura no Odoo (Lançado)
+            await execute("account.move", "action_post", [[newInvoiceId]]);
+            const invoiceInfo = await execute("account.move", "search_read", [[["id", "=", newInvoiceId]]], { fields: ["name"] });
 
-            return res.status(200).json({ success: true, id: newOrderId, name: orderInfo[0]?.name || newOrderId });
+            return res.status(200).json({ success: true, id: newInvoiceId, name: invoiceInfo[0]?.name || newInvoiceId });
         }
 
-        // AÇÃO: Detalhes de uma Venda Específica
+        // AÇÃO: Detalhes de uma Fatura Específica
         if (action === "get_sale_detail") {
             const { order_id } = body;
-            const orders = await execute("sale.order", "search_read", [[["id", "=", order_id]]], {
-                fields: ["id", "name", "partner_id", "payment_term_id", "order_line", "state"]
+            const invoices = await execute("account.move", "search_read", [[["id", "=", order_id]]], {
+                fields: ["id", "name", "partner_id", "invoice_payment_term_id", "invoice_line_ids", "state"]
             });
-            if (!orders || orders.length === 0) return res.status(404).json({ error: "Pedido não encontrado." });
+            if (!invoices || invoices.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
 
-            const order = orders[0];
-            const lines = await execute("sale.order.line", "search_read", [[["id", "in", order.order_line]]], {
-                fields: ["id", "product_id", "product_uom_qty", "price_unit", "price_subtotal"]
+            const invoice = invoices[0];
+            const lines = await execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
+                fields: ["id", "product_id", "quantity", "price_unit", "price_subtotal"]
             });
             const paymentTerms = await execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] });
             const products = await execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] });
 
-            return res.status(200).json({ order, lines: lines || [], payment_terms: paymentTerms || [], products: products || [] });
+            return res.status(200).json({ order: invoice, lines: lines || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Atualizar e Bloquear Pedido Existente
+        // AÇÃO: Atualizar Fatura (Salvar e Lançar novamente)
         if (action === "update_sale") {
             const { order_id, payment_term_id, lines } = body;
-            await execute("sale.order", "write", [[Number(order_id)], {
-                payment_term_id: payment_term_id ? Number(payment_term_id) : false
+            await execute("account.move", "write", [[Number(order_id)], {
+                invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false
             }]);
 
             for (const l of lines) {
                 if (l.id) {
-                    await execute("sale.order.line", "write", [[Number(l.id)], {
+                    await execute("account.move.line", "write", [[Number(l.id)], {
                         product_id: Number(l.product_id),
-                        product_uom_qty: Number(l.qty),
+                        quantity: Number(l.qty),
                         price_unit: Number(l.price)
                     }]);
                 }
             }
+
+            // Confirma a Fatura (Transita de Provisório para Lançado)
+            await execute("account.move", "action_post", [[Number(order_id)]]);
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Travar/Destravar Pedido
+        // AÇÃO: Alterar Status - "Voltar para provisório" (button_draft)
         if (action === "toggle_lock_sale") {
             const { order_id, lock } = body;
-            const method = lock ? "action_lock" : "action_unlock";
-            await execute("sale.order", method, [[Number(order_id)]]);
+            if (!lock) {
+                // Voltar para provisório para permitir edições
+                await execute("account.move", "button_draft", [[Number(order_id)]]);
+            } else {
+                // Confirmar / Lançar
+                await execute("account.move", "action_post", [[Number(order_id)]]);
+            }
             return res.status(200).json({ success: true });
         }
 
