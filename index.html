@@ -27,8 +27,8 @@
 
         /* Menu da Tela Inicial */
         .home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 10px; gap: 20px; text-align: center; }
-        .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 400px; }
-        .btn-menu { flex: 1; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 600px; flex-wrap: wrap; }
+        .btn-menu { flex: 1; min-width: 140px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
         .btn-menu:hover { background-color: var(--primary-hover); }
 
         .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
@@ -83,6 +83,7 @@
         <div class="menu-buttons">
             <button class="btn-menu" onclick="mostrarTela('produtosSection'); buscarProdutos();">PRODUTOS</button>
             <button class="btn-menu" onclick="mostrarTela('estoqueSection'); buscarEstoque();">ESTOQUE</button>
+            <button class="btn-menu" onclick="mostrarTela('vendasSection'); buscarVendas();">VENDAS</button>
         </div>
     </div>
 
@@ -144,6 +145,34 @@
             </table>
         </div>
     </div>
+
+    <!-- TELA DE VENDAS -->
+    <div id="vendasSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <h2>Pedidos de Vendas</h2>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="searchVendasInput" placeholder="Digite o pedido ou cliente..." oninput="debounceSearch('vendas')">
+            <button onclick="buscarVendas()">Pesquisar</button>
+        </div>
+
+        <div id="statusVendas" class="status">Carregando vendas...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>NÚMERO DO PEDIDO</th>
+                        <th>CLIENTE</th>
+                        <th>VALOR TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsVendas"></tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <!-- Modal de Edição de Produtos -->
@@ -181,6 +210,7 @@
         document.getElementById('homeSection').classList.remove('active-section');
         document.getElementById('produtosSection').classList.remove('active-section');
         document.getElementById('estoqueSection').classList.remove('active-section');
+        document.getElementById('vendasSection').classList.remove('active-section');
 
         document.getElementById(idTela).classList.add('active-section');
     }
@@ -210,6 +240,7 @@
         timer = setTimeout(() => {
             if (tipo === 'produtos') buscarProdutos();
             if (tipo === 'estoque') buscarEstoque();
+            if (tipo === 'vendas') buscarVendas();
         }, 300);
     }
 
@@ -285,7 +316,6 @@
 
             const data = await response.json();
 
-            // Filtro de segurança extra para garantir que nada zerado ou negativo passe
             const estoquesValidos = (data.result || []).filter(item => (item.quantity ?? 0) > 0);
 
             if (estoquesValidos.length === 0) {
@@ -312,6 +342,50 @@
             });
         } catch (e) {
             status.innerText = "Erro ao carregar estoque.";
+            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    async function buscarVendas() {
+        const query = document.getElementById("searchVendasInput").value.trim();
+        const status = document.getElementById("statusVendas");
+        const results = document.getElementById("resultsVendas");
+
+        status.innerText = "Pesquisando vendas...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_sales", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhuma venda com status 'Pedido de Venda' encontrada.";
+                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhuma venda encontrada</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} venda(s) encontrada(s):`;
+            results.innerHTML = "";
+
+            data.result.forEach(sale => {
+                const clientName = Array.isArray(sale.partner_id) ? sale.partner_id[1] : "-";
+                const orderNum = sale.name || "-";
+                const total = sale.amount_total ?? 0;
+
+                results.innerHTML += `
+                    <tr>
+                        <td><strong>${orderNum}</strong></td>
+                        <td>${clientName}</td>
+                        <td class="price-col">R$ ${total.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar vendas.";
             results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
