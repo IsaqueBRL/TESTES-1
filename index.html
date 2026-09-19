@@ -606,7 +606,7 @@
         }
     }
 
-    /* EDITAR FATURA EXISTENTE (VOLTAR PARA PROVISÓRIO E CONFIRMAR) */
+    /* EDITAR FATURA EXISTENTE */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
         try {
@@ -627,6 +627,7 @@
 
             const statusBadge = document.getElementById('saleStatusBadge');
             const isPosted = invoice.state === 'posted';
+            
             statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
             statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
 
@@ -637,8 +638,12 @@
                 selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
             });
 
-            renderLines(data.lines || [], false);
-            atualizarBotoesAcao(false);
+            // Se estiver em Provisório, abre liberado. Se estiver em Lançado, abre bloqueado.
+            const editavel = !isPosted;
+            selectTerm.disabled = !editavel;
+
+            renderLines(data.lines || [], editavel);
+            atualizarBotoesAcao(isPosted);
 
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
@@ -681,14 +686,16 @@
         document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
     }
 
-    function atualizarBotoesAcao(emEdicao) {
+    function atualizarBotoesAcao(isPosted) {
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
-        if (emEdicao) {
-            container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar</button>`;
-        } else {
+        if (isPosted) {
+            // Se a fatura estiver LANÇADA: exibe o botão "Voltar para Provisório"
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
+        } else {
+            // Se a fatura estiver PROVISÓRIA: exibe o botão "Confirmar"
+            container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar</button>`;
         }
     }
 
@@ -708,8 +715,9 @@
             statusBadge.innerText = 'Provisório';
             statusBadge.className = 'status-badge status-draft';
 
-            atualizarBotoesAcao(true);
-            alert('Fatura retornou para o status Provisório! Agora você pode editar os campos.');
+            // Altera botão para "Confirmar"
+            atualizarBotoesAcao(false);
+            alert('Fatura retornou para o status Provisório! Edite os campos e clique em Confirmar.');
         } catch (e) {
             alert('Erro ao alterar status para Provisório.');
         }
@@ -739,7 +747,7 @@
             });
 
             fecharSaleModal();
-            alert('Fatura atualizada e Confirmada (Lançada) com sucesso!');
+            alert('Fatura confirmada e alterada para Lançado com sucesso!');
             buscarVendas();
         } catch (e) {
             alert('Erro ao confirmar fatura.');
