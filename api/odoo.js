@@ -8,7 +8,6 @@ export default async function handler(req, res) {
     const action = body.action || "search";
 
     try {
-        // Autenticação no Odoo
         const authRes = await fetch(ODOO_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -48,13 +47,41 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
+        // AÇÃO: Buscar Parceiros (Clientes)
+        if (action === "search_partners") {
+            const query = body.query || "";
+            const domain = query ? [["name", "ilike", query]] : [];
+            const result = await execute("res.partner", "search_read", [domain], {
+                fields: ["id", "name", "email", "phone"],
+                limit: 20
+            });
+            return res.status(200).json({ partners: result || [] });
+        }
+
+        // AÇÃO: Criar Novo Parceiro (Cliente) no Odoo
+        if (action === "create_partner") {
+            const { name, email, phone } = body;
+            if (!name || !name.trim()) {
+                return res.status(400).json({ error: "Nome do parceiro é obrigatório." });
+            }
+
+            const newPartnerId = await execute("res.partner", "create", [{
+                name: name.trim(),
+                email: email ? email.trim() : false,
+                phone: phone ? phone.trim() : false,
+                customer_rank: 1
+            }]);
+
+            return res.status(200).json({ success: true, id: newPartnerId, name: name.trim() });
+        }
+
         // AÇÃO: Buscar Categorias
         if (action === "get_categories") {
             const result = await execute("product.category", "search_read", [[]], { fields: ["id", "name"] });
             return res.status(200).json({ categories: result || [] });
         }
 
-        // AÇÃO: Buscar Faturas (Vendas via Fatura de Cliente - account.move)
+        // AÇÃO: Buscar Faturas
         if (action === "get_sales") {
             const query = body.query || "";
             const domain = [["move_type", "=", "out_invoice"]];
@@ -78,7 +105,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ partners: partners || [], paymentTerms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Criar e Confirmar Fatura (Postar/Lançar)
+        // AÇÃO: Criar e Confirmar Fatura
         if (action === "create_sale") {
             const { partner_id, payment_term_id, lines } = body;
             const lineCommands = lines.map(l => [0, 0, {
@@ -94,14 +121,13 @@ export default async function handler(req, res) {
                 invoice_line_ids: lineCommands
             }]);
 
-            // Confirma/Lança a Fatura no Odoo (Lançado)
             await execute("account.move", "action_post", [[newInvoiceId]]);
             const invoiceInfo = await execute("account.move", "search_read", [[["id", "=", newInvoiceId]]], { fields: ["name"] });
 
             return res.status(200).json({ success: true, id: newInvoiceId, name: invoiceInfo[0]?.name || newInvoiceId });
         }
 
-        // AÇÃO: Detalhes de uma Fatura Específica
+        // AÇÃO: Detalhes de uma Fatura
         if (action === "get_sale_detail") {
             const { order_id } = body;
             const invoices = await execute("account.move", "search_read", [[["id", "=", order_id]]], {
@@ -120,7 +146,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Atualizar Fatura (Salvar e Lançar novamente)
+        // AÇÃO: Atualizar Fatura
         if (action === "update_sale") {
             const { order_id, partner_id, payment_term_id, lines } = body;
             
@@ -143,25 +169,22 @@ export default async function handler(req, res) {
                 }
             }
 
-            // Confirma a Fatura (Transita de Provisório para Lançado)
             await execute("account.move", "action_post", [[Number(order_id)]]);
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Alterar Status - "Voltar para provisório" (button_draft)
+        // AÇÃO: Alterar Status
         if (action === "toggle_lock_sale") {
             const { order_id, lock } = body;
             if (!lock) {
-                // Voltar para provisório para permitir edições
                 await execute("account.move", "button_draft", [[Number(order_id)]]);
             } else {
-                // Confirmar / Lançar
                 await execute("account.move", "action_post", [[Number(order_id)]]);
             }
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Buscar Estoque Detalhado (stock.quant)
+        // AÇÃO: Buscar Estoque
         if (action === "get_stock") {
             const query = body.query || "";
             const domain = [["location_id.usage", "=", "internal"], ["quantity", ">", 0]];
@@ -172,21 +195,6 @@ export default async function handler(req, res) {
                 limit: 100
             });
             return res.status(200).json({ result: result || [] });
-        }
-
-        // AÇÃO: Atualizar Produto
-        if (action === "update") {
-            const { id, name, list_price, standard_price, categ_id } = body;
-            if (!id) return res.status(400).json({ error: "ID do produto é obrigatório." });
-
-            const templateData = {};
-            if (list_price !== undefined) templateData.list_price = parseFloat(list_price) || 0.0;
-            if (standard_price !== undefined) templateData.standard_price = parseFloat(standard_price) || 0.0;
-            if (name) templateData.name = String(name).trim();
-            if (categ_id) templateData.categ_id = Number(categ_id);
-
-            await execute("product.template", "write", [[Number(id)], templateData], { context: { lang: "pt_BR" } });
-            return res.status(200).json({ success: true, message: "Produto atualizado com sucesso!" });
         }
 
         // AÇÃO PADRÃO: Pesquisar Produtos
