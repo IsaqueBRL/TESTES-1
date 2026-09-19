@@ -25,11 +25,16 @@
         header h1 { color: var(--primary-color); font-size: 26px; margin-bottom: 5px; }
         header p { color: #666; font-size: 14px; }
 
-        /* Menu da Tela Inicial */
+        /* Menu Inicial */
         .home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 10px; gap: 20px; text-align: center; }
         .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 600px; flex-wrap: wrap; }
         .btn-menu { flex: 1; min-width: 140px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
         .btn-menu:hover { background-color: var(--primary-hover); }
+
+        /* Estrutura de Visibilidade Alternada */
+        .view-section { display: none !important; }
+        .active-section { display: block !important; }
+        .active-flex { display: flex !important; }
 
         .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
         .btn-back { background-color: #666; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
@@ -57,16 +62,13 @@
         .btn-edit { background-color: var(--edit-color); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
-        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; }
         .modal h2 { color: var(--primary-color); font-size: 18px; }
         .modal label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: -8px; }
-        .modal input, .modal select { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; outline: none; background: #fff; }
+        .modal input, .modal select { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; outline: none; background: #fff; width: 100%; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .btn-cancel { background-color: #777; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-
-        .view-section { display: none; }
-        .active-section { display: block !important; }
     </style>
 </head>
 <body>
@@ -78,7 +80,7 @@
     </header>
 
     <!-- TELA INICIAL -->
-    <div id="homeSection" class="home-screen active-section">
+    <div id="homeSection" class="home-screen view-section active-flex">
         <h3>Selecione uma opção:</h3>
         <div class="menu-buttons">
             <button class="btn-menu" onclick="mostrarTela('produtosSection'); buscarProdutos();">PRODUTOS</button>
@@ -175,7 +177,7 @@
     </div>
 </div>
 
-<!-- Modal de Edição de Produtos -->
+<!-- MODAL DE EDIÇÃO DE PRODUTO -->
 <div class="modal-overlay" id="editModal">
     <div class="modal">
         <h2>Editar Produto</h2>
@@ -202,24 +204,71 @@
     </div>
 </div>
 
+<!-- MODAL DE DETALHES/EDIÇÃO DA VENDA -->
+<div class="modal-overlay" id="saleModal">
+    <div class="modal" style="max-width: 800px;">
+        <h2 id="saleModalTitle">Pedido S00000</h2>
+        
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 180px;">
+                <label>Cliente</label>
+                <input type="text" id="saleCustomer" readonly style="background: #e9ecef;">
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+                <label>Data de Lançamento</label>
+                <input type="datetime-local" id="saleDate">
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+                <label>Condição de Pagamento (Vencimento)</label>
+                <select id="salePaymentTerm"></select>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 15px; font-size: 15px; color: var(--primary-color);">Linhas do Pedido</h3>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>DESCRIÇÃO DO PRODUTO</th>
+                        <th style="width: 90px;">QTD</th>
+                        <th style="width: 110px;">PREÇO UNIT.</th>
+                        <th style="width: 90px;">% DESC.</th>
+                        <th>TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody id="saleLinesBody"></tbody>
+            </table>
+        </div>
+
+        <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
+            Total da Venda: <span id="saleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="fecharSaleModal()">Cancelar</button>
+            <button class="btn-save" id="btnSalvarVenda" onclick="salvarPedidoOdoo()">Salvar no Odoo</button>
+        </div>
+    </div>
+</div>
+
 <script>
     let timer = null;
     let produtosCarregados = [];
+    let currentOrderId = null;
+    let availableProducts = [];
 
     function mostrarTela(idTela) {
-        document.getElementById('homeSection').classList.remove('active-section');
-        document.getElementById('produtosSection').classList.remove('active-section');
-        document.getElementById('estoqueSection').classList.remove('active-section');
-        document.getElementById('vendasSection').classList.remove('active-section');
+        document.querySelectorAll('.view-section').forEach(el => {
+            el.classList.remove('active-section', 'active-flex');
+        });
 
-        document.getElementById('homeSection').style.display = 'none';
-        document.getElementById('produtosSection').style.display = 'none';
-        document.getElementById('estoqueSection').style.display = 'none';
-        document.getElementById('vendasSection').style.display = 'none';
-
-        const telaTarget = document.getElementById(idTela);
-        telaTarget.classList.add('active-section');
-        telaTarget.style.display = 'block';
+        const target = document.getElementById(idTela);
+        if (idTela === 'homeSection') {
+            target.classList.add('active-flex');
+        } else {
+            target.classList.add('active-section');
+        }
     }
 
     async function carregarCategorias() {
@@ -322,7 +371,6 @@
             });
 
             const data = await response.json();
-
             const estoquesValidos = (data.result || []).filter(item => (item.quantity ?? 0) > 0);
 
             if (estoquesValidos.length === 0) {
@@ -370,7 +418,7 @@
             const data = await response.json();
 
             if (!data.result || data.result.length === 0) {
-                status.innerText = "Nenhuma venda com status 'Pedido de Venda' encontrada.";
+                status.innerText = "Nenhuma venda encontrada.";
                 results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhuma venda encontrada</td></tr>`;
                 return;
             }
@@ -384,8 +432,8 @@
                 const total = sale.amount_total ?? 0;
 
                 results.innerHTML += `
-                    <tr>
-                        <td><strong>${orderNum}</strong></td>
+                    <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
+                        <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
                         <td>${clientName}</td>
                         <td class="price-col">R$ ${total.toFixed(2)}</td>
                     </tr>
@@ -394,6 +442,143 @@
         } catch (e) {
             status.innerText = "Erro ao carregar vendas.";
             results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    async function abrirDetalhesVenda(orderId) {
+        currentOrderId = orderId;
+        
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_sale_detail", order_id: orderId })
+            });
+
+            const data = await response.json();
+            if (data.error) return alert(data.error);
+
+            const order = data.order;
+            availableProducts = data.products || [];
+
+            document.getElementById('saleModalTitle').innerText = `Pedido ${order.name}`;
+            document.getElementById('saleCustomer').value = Array.isArray(order.partner_id) ? order.partner_id[1] : "";
+            
+            if (order.date_order) {
+                document.getElementById('saleDate').value = order.date_order.replace(' ', 'T').substring(0, 16);
+            }
+
+            const selectTerm = document.getElementById('salePaymentTerm');
+            selectTerm.innerHTML = '<option value="">Selecione...</option>';
+            (data.payment_terms || []).forEach(term => {
+                const selected = (Array.isArray(order.payment_term_id) && order.payment_term_id[0] === term.id) ? 'selected' : '';
+                selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
+            });
+
+            renderLines(data.lines || []);
+            document.getElementById('saleModal').style.display = 'flex';
+        } catch (e) {
+            alert('Erro ao carregar detalhes do pedido.');
+        }
+    }
+
+    function renderLines(lines) {
+        const tbody = document.getElementById('saleLinesBody');
+        tbody.innerHTML = "";
+
+        lines.forEach(line => {
+            const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
+            
+            let options = availableProducts.map(p => 
+                `<option value="${p.id}" ${p.id === prodId ? 'selected' : ''}>${p.display_name}</option>`
+            ).join('');
+
+            tbody.innerHTML += `
+                <tr class="line-row" data-line-id="${line.id || ''}">
+                    <td>
+                        <select class="line-product" onchange="recalcularTotais()">${options}</select>
+                    </td>
+                    <td>
+                        <input type="number" class="line-qty" value="${line.product_uom_qty || 1}" step="1" oninput="recalcularTotais()">
+                    </td>
+                    <td>
+                        <input type="number" class="line-price" value="${line.price_unit || 0}" step="0.01" oninput="recalcularTotais()">
+                    </td>
+                    <td>
+                        <input type="number" class="line-discount" value="${line.discount || 0}" step="0.1" oninput="recalcularTotais()">
+                    </td>
+                    <td class="line-subtotal" style="font-weight:bold;">
+                        R$ ${(line.price_subtotal || 0).toFixed(2)}
+                    </td>
+                </tr>
+            `;
+        });
+        recalcularTotais();
+    }
+
+    function recalcularTotais() {
+        let totalGeral = 0;
+        document.querySelectorAll('.line-row').forEach(row => {
+            const qty = parseFloat(row.querySelector('.line-qty').value) || 0;
+            const price = parseFloat(row.querySelector('.line-price').value) || 0;
+            const desc = parseFloat(row.querySelector('.line-discount').value) || 0;
+
+            const subtotal = (qty * price) * (1 - (desc / 100));
+            row.querySelector('.line-subtotal').innerText = `R$ ${subtotal.toFixed(2)}`;
+            totalGeral += subtotal;
+        });
+
+        document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
+    }
+
+    function fecharSaleModal() {
+        document.getElementById('saleModal').style.display = 'none';
+    }
+
+    async function salvarPedidoOdoo() {
+        const btn = document.getElementById('btnSalvarVenda');
+        btn.innerText = "Salvando...";
+        btn.disabled = true;
+
+        const linesData = [];
+        document.querySelectorAll('.line-row').forEach(row => {
+            linesData.push({
+                id: row.getAttribute('data-line-id') || null,
+                product_id: row.querySelector('.line-product').value,
+                qty: row.querySelector('.line-qty').value,
+                price: row.querySelector('.line-price').value,
+                discount: row.querySelector('.line-discount').value
+            });
+        });
+
+        const payload = {
+            action: 'update_sale',
+            order_id: currentOrderId,
+            date_order: document.getElementById('saleDate').value.replace('T', ' ') + ':00',
+            payment_term_id: document.getElementById('salePaymentTerm').value,
+            lines: linesData
+        };
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert('Pedido atualizado com sucesso no Odoo!');
+                fecharSaleModal();
+                buscarVendas();
+            } else {
+                alert('Erro ao atualizar o pedido.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao salvar pedido.');
+        } finally {
+            btn.innerText = "Salvar no Odoo";
+            btn.disabled = false;
         }
     }
 
