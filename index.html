@@ -15,6 +15,7 @@
             --success-color: #2e7d32;
             --danger-color: #c62828;
             --edit-color: #1976d2;
+            --warning-color: #f57c00;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,13 +32,15 @@
         .btn-menu { flex: 1; min-width: 140px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
         .btn-menu:hover { background-color: var(--primary-hover); }
 
-        /* Estrutura de Visibilidade Alternada */
         .view-section { display: none !important; }
         .active-section { display: block !important; }
         .active-flex { display: flex !important; }
 
-        .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+        .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
         .btn-back { background-color: #666; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+        
+        .btn-action { background-color: var(--primary-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .btn-action:hover { background-color: var(--primary-hover); }
 
         .search-box { display: flex; gap: 8px; margin-bottom: 15px; }
         .search-box input { flex: 1; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; outline: none; }
@@ -55,11 +58,9 @@
         .cost-col { color: #666; font-weight: 500; }
         .category-badge { background-color: #f0f0f0; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #444; border: 1px solid #ddd; }
         
-        .stock-badge { display: inline-block; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .stock-in { background-color: #e8f5e9; color: var(--success-color); }
-        .stock-out { background-color: #ffebee; color: var(--danger-color); }
-
-        .btn-edit { background-color: var(--edit-color); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-sale { background-color: #e8f5e9; color: var(--success-color); }
+        .status-draft { background-color: #fff3e0; color: var(--warning-color); }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
         .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; }
@@ -78,7 +79,6 @@
         .alert-icon.error { background: #ffebee; color: var(--danger-color); }
         .alert-msg { font-size: 15px; color: #333; font-weight: 500; line-height: 1.4; }
         .btn-alert-ok { background-color: var(--primary-color); color: white; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; }
-        .btn-alert-ok:hover { background-color: var(--primary-hover); }
     </style>
 </head>
 <body>
@@ -105,14 +105,11 @@
             <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
             <h2>Gestão de Produtos</h2>
         </div>
-
         <div class="search-box">
             <input type="text" id="searchInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('produtos')">
             <button onclick="buscarProdutos()">Pesquisar</button>
         </div>
-
         <div id="statusProdutos" class="status">Carregando produtos...</div>
-
         <div class="table-container">
             <table>
                 <thead>
@@ -136,14 +133,11 @@
             <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
             <h2>Detalhamento do Estoque</h2>
         </div>
-
         <div class="search-box">
             <input type="text" id="searchEstoqueInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('estoque')">
             <button onclick="buscarEstoque()">Pesquisar</button>
         </div>
-
         <div id="statusEstoque" class="status">Carregando estoque...</div>
-
         <div class="table-container">
             <table>
                 <thead>
@@ -163,6 +157,7 @@
         <div class="top-nav">
             <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
             <h2>Pedidos de Vendas</h2>
+            <button class="btn-action" onclick="abrirNovaVendaModal()">+ Nova Venda</button>
         </div>
 
         <div class="search-box">
@@ -178,6 +173,7 @@
                     <tr>
                         <th>NÚMERO DO PEDIDO</th>
                         <th>CLIENTE</th>
+                        <th>STATUS</th>
                         <th>VALOR TOTAL</th>
                     </tr>
                 </thead>
@@ -187,37 +183,59 @@
     </div>
 </div>
 
-<!-- MODAL DE EDIÇÃO DE PRODUTO -->
-<div class="modal-overlay" id="editModal">
-    <div class="modal">
-        <h2>Editar Produto</h2>
-        <input type="hidden" id="editId">
+<!-- MODAL: NOVA VENDA -->
+<div class="modal-overlay" id="newSaleModal">
+    <div class="modal" style="max-width: 700px;">
+        <h2>Nova Venda (Cotação)</h2>
         
-        <label>Descrição / Nome</label>
-        <input type="text" id="editName">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <label>Cliente</label>
+                <select id="newSalePartner"></select>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <label>Condição de Pagamento</label>
+                <select id="newSalePaymentTerm"></select>
+            </div>
+        </div>
 
-        <label>Categoria</label>
-        <select id="editCategory">
-            <option value="">Carregando categorias...</option>
-        </select>
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas do Pedido</h3>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>PRODUTO</th>
+                        <th style="width: 90px;">QTD</th>
+                        <th style="width: 110px;">PREÇO UNI</th>
+                        <th>TOTAL</th>
+                        <th style="width: 40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="newSaleLinesBody"></tbody>
+            </table>
+        </div>
 
-        <label>Preço de Venda (R$)</label>
-        <input type="number" step="0.01" id="editPrice">
+        <button style="background:#eee; border:1px dashed #aaa; padding:8px; border-radius:6px; cursor:pointer; font-weight:bold; color:#444;" onclick="adicionarLinhaNovaVenda()">+ Adicionar Linha</button>
 
-        <label>Preço de Custo (R$)</label>
-        <input type="number" step="0.01" id="editCost">
+        <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
+            Valor Total: <span id="newSaleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
+        </div>
 
         <div class="modal-actions">
-            <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
-            <button class="btn-save" id="btnSalvar" onclick="salvarAlteracao()">Salvar no Odoo</button>
+            <button class="btn-cancel" onclick="fecharNovaVendaModal()">Cancelar</button>
+            <button class="btn-save" id="btnConfirmarNovaVenda" onclick="confirmarCriacaoVenda()">Confirmar Venda</button>
         </div>
     </div>
 </div>
 
-<!-- MODAL DE DETALHES/EDIÇÃO DA VENDA -->
+<!-- MODAL: DETALHES / EDITAR VENDA -->
 <div class="modal-overlay" id="saleModal">
     <div class="modal" style="max-width: 800px;">
-        <h2 id="saleModalTitle">Pedido S00000</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 id="saleModalTitle">Pedido S00000</h2>
+            <span id="saleStatusBadge" class="status-badge"></span>
+        </div>
         
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 180px;">
@@ -225,12 +243,8 @@
                 <input type="text" id="saleCustomer" readonly style="background: #e9ecef;">
             </div>
             <div style="flex: 1; min-width: 180px;">
-                <label>Data de Lançamento</label>
-                <input type="datetime-local" id="saleDate">
-            </div>
-            <div style="flex: 1; min-width: 180px;">
-                <label>Condição de Pagamento (Vencimento)</label>
-                <select id="salePaymentTerm"></select>
+                <label>Condição de Pagamento</label>
+                <select id="salePaymentTerm" disabled></select>
             </div>
         </div>
 
@@ -243,7 +257,6 @@
                         <th>DESCRIÇÃO DO PRODUTO</th>
                         <th style="width: 90px;">QTD</th>
                         <th style="width: 110px;">PREÇO UNIT.</th>
-                        <th style="width: 90px;">% DESC.</th>
                         <th>TOTAL</th>
                     </tr>
                 </thead>
@@ -252,12 +265,11 @@
         </div>
 
         <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
-            Total da Venda: <span id="saleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
+            Valor Total: <span id="saleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
         </div>
 
-        <div class="modal-actions">
-            <button class="btn-cancel" onclick="fecharSaleModal()">Cancelar</button>
-            <button class="btn-save" id="btnSalvarVenda" onclick="salvarPedidoOdoo()">Salvar no Odoo</button>
+        <div class="modal-actions" id="saleModalActions">
+            <!-- Ações dinâmicas (Destravar/Editar/Confirmar/Travar) -->
         </div>
     </div>
 </div>
@@ -275,16 +287,17 @@
     let timer = null;
     let produtosCarregados = [];
     let currentOrderId = null;
+    let currentOrderState = null;
+    let currentOrderLocked = false;
     let availableProducts = [];
+    let availablePartners = [];
+    let availablePaymentTerms = [];
 
-    /* FUNÇÃO DE NOTIFICAÇÃO PERSONALIZADA (Substitui o alert padrão) */
     function showAlert(mensagem, tipo = 'success') {
         const modal = document.getElementById('customAlertModal');
         const msgEl = document.getElementById('alertMessage');
         const iconEl = document.getElementById('alertIcon');
-
         msgEl.innerText = mensagem;
-
         if (tipo === 'success') {
             iconEl.innerText = "✓";
             iconEl.className = "alert-icon success";
@@ -292,7 +305,6 @@
             iconEl.innerText = "✕";
             iconEl.className = "alert-icon error";
         }
-
         modal.style.display = 'flex';
     }
 
@@ -304,32 +316,11 @@
         document.querySelectorAll('.view-section').forEach(el => {
             el.classList.remove('active-section', 'active-flex');
         });
-
         const target = document.getElementById(idTela);
         if (idTela === 'homeSection') {
             target.classList.add('active-flex');
         } else {
             target.classList.add('active-section');
-        }
-    }
-
-    async function carregarCategorias() {
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "get_categories" })
-            });
-            const data = await response.json();
-            if (data.categories) {
-                const selectCat = document.getElementById("editCategory");
-                selectCat.innerHTML = "";
-                data.categories.forEach(cat => {
-                    selectCat.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
-                });
-            }
-        } catch (e) {
-            console.error("Erro ao carregar categorias", e);
         }
     }
 
@@ -342,11 +333,352 @@
         }, 300);
     }
 
+    /* VENDAS */
+    async function buscarVendas() {
+        const query = document.getElementById("searchVendasInput").value.trim();
+        const status = document.getElementById("statusVendas");
+        const results = document.getElementById("resultsVendas");
+
+        status.innerText = "Pesquisando vendas...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_sales", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhuma venda encontrada.";
+                results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #888;">Nenhuma venda encontrada</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} venda(s) encontrada(s):`;
+            results.innerHTML = "";
+
+            data.result.forEach(sale => {
+                const clientName = Array.isArray(sale.partner_id) ? sale.partner_id[1] : "-";
+                const orderNum = sale.name || "-";
+                const total = sale.amount_total ?? 0;
+                const isSale = sale.state === 'sale' || sale.state === 'done';
+
+                results.innerHTML += `
+                    <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
+                        <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
+                        <td>${clientName}</td>
+                        <td>
+                            <span class="status-badge ${isSale ? 'status-sale' : 'status-draft'}">
+                                ${isSale ? 'Pedido de Venda' : 'Cotação'}
+                            </span>
+                        </td>
+                        <td class="price-col">R$ ${total.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar vendas.";
+            results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    /* ABRIR MODAL NOVA VENDA */
+    async function abrirNovaVendaModal() {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_new_sale_data" })
+            });
+            const data = await res.json();
+            
+            availablePartners = data.partners || [];
+            availablePaymentTerms = data.paymentTerms || [];
+            availableProducts = data.products || [];
+
+            const partnerSelect = document.getElementById('newSalePartner');
+            partnerSelect.innerHTML = availablePartners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+            const termSelect = document.getElementById('newSalePaymentTerm');
+            termSelect.innerHTML = '<option value="">Selecione...</option>' + 
+                availablePaymentTerms.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+            document.getElementById('newSaleLinesBody').innerHTML = '';
+            adicionarLinhaNovaVenda();
+            
+            document.getElementById('newSaleModal').style.display = 'flex';
+        } catch (e) {
+            showAlert('Erro ao abrir formulário de nova venda.', 'error');
+        }
+    }
+
+    function fecharNovaVendaModal() {
+        document.getElementById('newSaleModal').style.display = 'none';
+    }
+
+    function adicionarLinhaNovaVenda() {
+        const tbody = document.getElementById('newSaleLinesBody');
+        
+        let productOptions = availableProducts.map(p => `<option value="${p.id}" data-price="${p.list_price}">${p.display_name}</option>`).join('');
+
+        const row = document.createElement('tr');
+        row.className = 'new-line-row';
+        row.innerHTML = `
+            <td>
+                <select class="new-line-product" onchange="atualizarPrecoLinhaNovaVenda(this)">${productOptions}</select>
+            </td>
+            <td>
+                <input type="number" class="new-line-qty" value="1" min="1" oninput="recalcularNovaVenda()">
+            </td>
+            <td>
+                <input type="number" class="new-line-price" value="${availableProducts[0]?.list_price || 0}" step="0.01" oninput="recalcularNovaVenda()">
+            </td>
+            <td class="new-line-subtotal" style="font-weight:bold;">
+                R$ ${(availableProducts[0]?.list_price || 0).toFixed(2)}
+            </td>
+            <td>
+                <button onclick="this.closest('tr').remove(); recalcularNovaVenda();" style="background:red; color:white; border:none; border-radius:4px; cursor:pointer;">✕</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+        recalcularNovaVenda();
+    }
+
+    function atualizarPrecoLinhaNovaVenda(selectEl) {
+        const selectedOpt = selectEl.options[selectEl.selectedIndex];
+        const price = parseFloat(selectedOpt.getAttribute('data-price')) || 0;
+        const row = selectEl.closest('tr');
+        row.querySelector('.new-line-price').value = price;
+        recalcularNovaVenda();
+    }
+
+    function recalcularNovaVenda() {
+        let total = 0;
+        document.querySelectorAll('.new-line-row').forEach(row => {
+            const qty = parseFloat(row.querySelector('.new-line-qty').value) || 0;
+            const price = parseFloat(row.querySelector('.new-line-price').value) || 0;
+            const subtotal = qty * price;
+            row.querySelector('.new-line-subtotal').innerText = `R$ ${subtotal.toFixed(2)}`;
+            total += subtotal;
+        });
+        document.getElementById('newSaleTotalVal').innerText = `R$ ${total.toFixed(2)}`;
+    }
+
+    async function confirmarCriacaoVenda() {
+        const btn = document.getElementById('btnConfirmarNovaVenda');
+        btn.innerText = "Criando...";
+        btn.disabled = true;
+
+        const partner_id = document.getElementById('newSalePartner').value;
+        const payment_term_id = document.getElementById('newSalePaymentTerm').value;
+        
+        const lines = [];
+        document.querySelectorAll('.new-line-row').forEach(row => {
+            lines.push({
+                product_id: row.querySelector('.new-line-product').value,
+                qty: row.querySelector('.new-line-qty').value,
+                price: row.querySelector('.new-line-price').value
+            });
+        });
+
+        try {
+            // 1. Criar Cotação
+            const resCreate = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'create_sale', partner_id, payment_term_id, lines })
+            });
+            const dataCreate = await resCreate.json();
+
+            if (dataCreate.success) {
+                // 2. Confirmar a Cotação para virar "Pedido de Venda"
+                await fetch('/api/odoo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'confirm_sale', order_id: dataCreate.id })
+                });
+
+                fecharNovaVendaModal();
+                showAlert(`Venda vinculada ao Pedido N° ${dataCreate.name} com status 'Pedido de Venda'!`, 'success');
+                buscarVendas();
+            } else {
+                showAlert('Erro ao criar venda.', 'error');
+            }
+        } catch (e) {
+            showAlert('Erro na requisição ao criar venda.', 'error');
+        } finally {
+            btn.innerText = "Confirmar Venda";
+            btn.disabled = false;
+        }
+    }
+
+    /* DETALHES / DESTRAVAR / EDITAR / TRAVAR VENDA */
+    async function abrirDetalhesVenda(orderId) {
+        currentOrderId = orderId;
+        
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_sale_detail", order_id: orderId })
+            });
+
+            const data = await response.json();
+            if (data.error) return showAlert(data.error, 'error');
+
+            const order = data.order;
+            currentOrderState = order.state;
+            currentOrderLocked = order.locked;
+            availableProducts = data.products || [];
+
+            document.getElementById('saleModalTitle').innerText = `Pedido ${order.name}`;
+            document.getElementById('saleCustomer').value = Array.isArray(order.partner_id) ? order.partner_id[1] : "";
+
+            const statusBadge = document.getElementById('saleStatusBadge');
+            const isSale = order.state === 'sale' || order.state === 'done';
+            statusBadge.innerText = isSale ? 'Pedido de Venda' : 'Cotação';
+            statusBadge.className = `status-badge ${isSale ? 'status-sale' : 'status-draft'}`;
+
+            const selectTerm = document.getElementById('salePaymentTerm');
+            selectTerm.innerHTML = '<option value="">Selecione...</option>';
+            (data.payment_terms || []).forEach(term => {
+                const selected = (Array.isArray(order.payment_term_id) && order.payment_term_id[0] === term.id) ? 'selected' : '';
+                selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
+            });
+
+            renderLines(data.lines || [], false);
+            atualizarBotoesAcao(false);
+
+            document.getElementById('saleModal').style.display = 'flex';
+        } catch (e) {
+            showAlert('Erro ao carregar detalhes do pedido.', 'error');
+        }
+    }
+
+    function renderLines(lines, editavel) {
+        const tbody = document.getElementById('saleLinesBody');
+        tbody.innerHTML = "";
+
+        lines.forEach(line => {
+            const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
+            
+            let options = availableProducts.map(p => 
+                `<option value="${p.id}" ${p.id === prodId ? 'selected' : ''}>${p.display_name}</option>`
+            ).join('');
+
+            tbody.innerHTML += `
+                <tr class="line-row" data-line-id="${line.id || ''}">
+                    <td>
+                        <select class="line-product" ${editavel ? '' : 'disabled'} onchange="recalcularTotais()">${options}</select>
+                    </td>
+                    <td>
+                        <input type="number" class="line-qty" value="${line.product_uom_qty || 1}" step="1" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()">
+                    </td>
+                    <td>
+                        <input type="number" class="line-price" value="${line.price_unit || 0}" step="0.01" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()">
+                    </td>
+                    <td class="line-subtotal" style="font-weight:bold;">
+                        R$ ${(line.price_subtotal || 0).toFixed(2)}
+                    </td>
+                </tr>
+            `;
+        });
+        recalcularTotais();
+    }
+
+    function recalcularTotais() {
+        let totalGeral = 0;
+        document.querySelectorAll('.line-row').forEach(row => {
+            const qty = parseFloat(row.querySelector('.line-qty').value) || 0;
+            const price = parseFloat(row.querySelector('.line-price').value) || 0;
+            const subtotal = qty * price;
+            row.querySelector('.line-subtotal').innerText = `R$ ${subtotal.toFixed(2)}`;
+            totalGeral += subtotal;
+        });
+
+        document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
+    }
+
+    function atualizarBotoesAcao(emEdicao) {
+        const container = document.getElementById('saleModalActions');
+        container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
+
+        if (emEdicao) {
+            container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar (Salvar & Travar)</button>`;
+        } else {
+            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Editar (Destravar)</button>`;
+        }
+    }
+
+    async function destravarParaEdicao() {
+        try {
+            await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: false })
+            });
+
+            document.getElementById('salePaymentTerm').disabled = false;
+            document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
+            document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
+
+            atualizarBotoesAcao(true);
+            showAlert('Venda destravada para edição!', 'success');
+        } catch (e) {
+            showAlert('Erro ao destravar a venda.', 'error');
+        }
+    }
+
+    async function salvarEBloquearPedido() {
+        const linesData = [];
+        document.querySelectorAll('.line-row').forEach(row => {
+            linesData.push({
+                id: row.getAttribute('data-line-id') || null,
+                product_id: row.querySelector('.line-product').value,
+                qty: row.querySelector('.line-qty').value,
+                price: row.querySelector('.line-price').value
+            });
+        });
+
+        try {
+            // 1. Salva as edições
+            await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_sale',
+                    order_id: currentOrderId,
+                    payment_term_id: document.getElementById('salePaymentTerm').value,
+                    lines: linesData
+                })
+            });
+
+            // 2. Trava a venda novamente
+            await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: true })
+            });
+
+            fecharSaleModal();
+            showAlert('Edição salva e pedido travado com sucesso!', 'success');
+            buscarVendas();
+        } catch (e) {
+            showAlert('Erro ao salvar e travar pedido.', 'error');
+        }
+    }
+
+    function fecharSaleModal() {
+        document.getElementById('saleModal').style.display = 'none';
+    }
+
+    /* DEMAIS MÉTODOS (PRODUTOS / ESTOQUE) */
     async function buscarProdutos() {
         const query = document.getElementById("searchInput").value.trim();
         const status = document.getElementById("statusProdutos");
         const results = document.getElementById("resultsProdutos");
-
         status.innerText = "Pesquisando produtos...";
 
         try {
@@ -357,7 +689,6 @@
             });
 
             const data = await response.json();
-
             if (!data.result || data.result.length === 0) {
                 status.innerText = "Nenhum produto encontrado.";
                 results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">Nenhum produto encontrado</td></tr>`;
@@ -382,19 +713,18 @@
                         <td class="price-col">R$ ${price.toFixed(2)}</td>
                         <td class="cost-col">R$ ${cost.toFixed(2)}</td>
                         <td>
-                            <span class="stock-badge ${hasStock ? 'stock-in' : 'stock-out'}">
+                            <span class="status-badge ${hasStock ? 'status-sale' : 'status-draft'}">
                                 ${hasStock ? `${Number(stock)} un` : 'Esgotado'}
                             </span>
                         </td>
                         <td>
-                            <button class="btn-edit" onclick="abrirModal(${prod.id})">Editar</button>
+                            <button class="btn-action" onclick="abrirModal(${prod.id})">Editar</button>
                         </td>
                     </tr>
                 `;
             });
         } catch (e) {
             status.innerText = "Erro ao carregar produtos.";
-            results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
 
@@ -402,7 +732,6 @@
         const query = document.getElementById("searchEstoqueInput").value.trim();
         const status = document.getElementById("statusEstoque");
         const results = document.getElementById("resultsEstoque");
-
         status.innerText = "Pesquisando estoque...";
 
         try {
@@ -439,254 +768,11 @@
             });
         } catch (e) {
             status.innerText = "Erro ao carregar estoque.";
-            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
-        }
-    }
-
-    async function buscarVendas() {
-        const query = document.getElementById("searchVendasInput").value.trim();
-        const status = document.getElementById("statusVendas");
-        const results = document.getElementById("resultsVendas");
-
-        status.innerText = "Pesquisando vendas...";
-
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "get_sales", query })
-            });
-
-            const data = await response.json();
-
-            if (!data.result || data.result.length === 0) {
-                status.innerText = "Nenhuma venda encontrada.";
-                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhuma venda encontrada</td></tr>`;
-                return;
-            }
-
-            status.innerText = `${data.result.length} venda(s) encontrada(s):`;
-            results.innerHTML = "";
-
-            data.result.forEach(sale => {
-                const clientName = Array.isArray(sale.partner_id) ? sale.partner_id[1] : "-";
-                const orderNum = sale.name || "-";
-                const total = sale.amount_total ?? 0;
-
-                results.innerHTML += `
-                    <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
-                        <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
-                        <td>${clientName}</td>
-                        <td class="price-col">R$ ${total.toFixed(2)}</td>
-                    </tr>
-                `;
-            });
-        } catch (e) {
-            status.innerText = "Erro ao carregar vendas.";
-            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
-        }
-    }
-
-    async function abrirDetalhesVenda(orderId) {
-        currentOrderId = orderId;
-        
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "get_sale_detail", order_id: orderId })
-            });
-
-            const data = await response.json();
-            if (data.error) return showAlert(data.error, 'error');
-
-            const order = data.order;
-            availableProducts = data.products || [];
-
-            document.getElementById('saleModalTitle').innerText = `Pedido ${order.name}`;
-            document.getElementById('saleCustomer').value = Array.isArray(order.partner_id) ? order.partner_id[1] : "";
-            
-            if (order.date_order) {
-                document.getElementById('saleDate').value = order.date_order.replace(' ', 'T').substring(0, 16);
-            }
-
-            const selectTerm = document.getElementById('salePaymentTerm');
-            selectTerm.innerHTML = '<option value="">Selecione...</option>';
-            (data.payment_terms || []).forEach(term => {
-                const selected = (Array.isArray(order.payment_term_id) && order.payment_term_id[0] === term.id) ? 'selected' : '';
-                selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
-            });
-
-            renderLines(data.lines || []);
-            document.getElementById('saleModal').style.display = 'flex';
-        } catch (e) {
-            showAlert('Erro ao carregar detalhes do pedido.', 'error');
-        }
-    }
-
-    function renderLines(lines) {
-        const tbody = document.getElementById('saleLinesBody');
-        tbody.innerHTML = "";
-
-        lines.forEach(line => {
-            const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
-            
-            let options = availableProducts.map(p => 
-                `<option value="${p.id}" ${p.id === prodId ? 'selected' : ''}>${p.display_name}</option>`
-            ).join('');
-
-            tbody.innerHTML += `
-                <tr class="line-row" data-line-id="${line.id || ''}">
-                    <td>
-                        <select class="line-product" onchange="recalcularTotais()">${options}</select>
-                    </td>
-                    <td>
-                        <input type="number" class="line-qty" value="${line.product_uom_qty || 1}" step="1" oninput="recalcularTotais()">
-                    </td>
-                    <td>
-                        <input type="number" class="line-price" value="${line.price_unit || 0}" step="0.01" oninput="recalcularTotais()">
-                    </td>
-                    <td>
-                        <input type="number" class="line-discount" value="${line.discount || 0}" step="0.1" oninput="recalcularTotais()">
-                    </td>
-                    <td class="line-subtotal" style="font-weight:bold;">
-                        R$ ${(line.price_subtotal || 0).toFixed(2)}
-                    </td>
-                </tr>
-            `;
-        });
-        recalcularTotais();
-    }
-
-    function recalcularTotais() {
-        let totalGeral = 0;
-        document.querySelectorAll('.line-row').forEach(row => {
-            const qty = parseFloat(row.querySelector('.line-qty').value) || 0;
-            const price = parseFloat(row.querySelector('.line-price').value) || 0;
-            const desc = parseFloat(row.querySelector('.line-discount').value) || 0;
-
-            const subtotal = (qty * price) * (1 - (desc / 100));
-            row.querySelector('.line-subtotal').innerText = `R$ ${subtotal.toFixed(2)}`;
-            totalGeral += subtotal;
-        });
-
-        document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
-    }
-
-    function fecharSaleModal() {
-        document.getElementById('saleModal').style.display = 'none';
-    }
-
-    async function salvarPedidoOdoo() {
-        const btn = document.getElementById('btnSalvarVenda');
-        btn.innerText = "Salvando...";
-        btn.disabled = true;
-
-        const linesData = [];
-        document.querySelectorAll('.line-row').forEach(row => {
-            linesData.push({
-                id: row.getAttribute('data-line-id') || null,
-                product_id: row.querySelector('.line-product').value,
-                qty: row.querySelector('.line-qty').value,
-                price: row.querySelector('.line-price').value,
-                discount: row.querySelector('.line-discount').value
-            });
-        });
-
-        const payload = {
-            action: 'update_sale',
-            order_id: currentOrderId,
-            date_order: document.getElementById('saleDate').value.replace('T', ' ') + ':00',
-            payment_term_id: document.getElementById('salePaymentTerm').value,
-            lines: linesData
-        };
-
-        try {
-            const res = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                fecharSaleModal();
-                showAlert('Pedido atualizado com sucesso no Odoo!', 'success');
-                buscarVendas();
-            } else {
-                showAlert('Erro ao atualizar o pedido.', 'error');
-            }
-        } catch (e) {
-            showAlert('Erro de conexão ao salvar pedido.', 'error');
-        } finally {
-            btn.innerText = "Salvar no Odoo";
-            btn.disabled = false;
-        }
-    }
-
-    function abrirModal(id) {
-        const prod = produtosCarregados.find(p => p.id === id);
-        if (!prod) return;
-
-        document.getElementById('editId').value = prod.id;
-        document.getElementById('editName').value = prod.name;
-        document.getElementById('editPrice').value = prod.list_price;
-        document.getElementById('editCost').value = prod.standard_price;
-
-        const catId = Array.isArray(prod.categ_id) ? prod.categ_id[0] : "";
-        document.getElementById('editCategory').value = catId;
-
-        document.getElementById('editModal').style.display = 'flex';
-    }
-
-    function fecharModal() {
-        document.getElementById('editModal').style.display = 'none';
-    }
-
-    async function salvarAlteracao() {
-        const id = document.getElementById('editId').value;
-        const name = document.getElementById('editName').value;
-        const list_price = document.getElementById('editPrice').value;
-        const standard_price = document.getElementById('editCost').value;
-        const categ_id = document.getElementById('editCategory').value;
-        const btnSalvar = document.getElementById('btnSalvar');
-
-        btnSalvar.innerText = "Salvando...";
-        btnSalvar.disabled = true;
-
-        try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'update',
-                    id: Number(id),
-                    name: name,
-                    list_price: parseFloat(list_price),
-                    standard_price: parseFloat(standard_price),
-                    categ_id: Number(categ_id)
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.error) {
-                showAlert(`Erro ao salvar: ${data.error}`, 'error');
-            } else {
-                fecharModal();
-                showAlert('Produto atualizado com sucesso no Odoo!', 'success');
-                buscarProdutos();
-            }
-        } catch (err) {
-            showAlert('Erro de conexão ao salvar alterações.', 'error');
-        } finally {
-            btnSalvar.innerText = "Salvar no Odoo";
-            btnSalvar.disabled = false;
         }
     }
 
     window.onload = () => {
-        carregarCategorias();
+        buscarProdutos();
     };
 </script>
 
