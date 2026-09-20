@@ -59,6 +59,58 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
+        // AÇÃO: BUSCAR PAGAMENTOS DA FATURA
+        if (action === "get_invoice_payments") {
+            const { order_id } = body;
+            if (!order_id) return res.status(400).json({ error: "ID da fatura é obrigatório." });
+
+            const invoice = await execute("account.move", "read", [[Number(order_id)]], {
+                fields: ["invoice_payments_widget"]
+            });
+
+            let paymentIds = [];
+            if (invoice && invoice[0] && invoice[0].invoice_payments_widget) {
+                const widgetData = typeof invoice[0].invoice_payments_widget === 'string' 
+                    ? JSON.parse(invoice[0].invoice_payments_widget) 
+                    : invoice[0].invoice_payments_widget;
+
+                if (widgetData && widgetData.content) {
+                    paymentIds = widgetData.content.map(p => p.account_payment_id).filter(Boolean);
+                }
+            }
+
+            if (paymentIds.length === 0) {
+                const paymentsFound = await execute("account.payment", "search_read", [[["ref", "ilike", order_id]]], {
+                    fields: ["id", "name", "amount", "date", "state", "journal_id", "partner_id"]
+                });
+                return res.status(200).json({ payments: paymentsFound || [] });
+            }
+
+            const payments = await execute("account.payment", "search_read", [[["id", "in", paymentIds]]], {
+                fields: ["id", "name", "amount", "date", "state", "journal_id", "partner_id"]
+            });
+
+            return res.status(200).json({ payments: payments || [] });
+        }
+
+        // AÇÃO: MUDAR PAGAMENTO PARA PROVISÓRIO (VOLTAR PARA PROVISÓRIO)
+        if (action === "unpost_payment") {
+            const { payment_id } = body;
+            if (!payment_id) return res.status(400).json({ error: "ID do pagamento é obrigatório." });
+
+            await execute("account.payment", "action_draft", [[Number(payment_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: EXCLUIR PAGAMENTO (APENAS SE ESTIVER EM PROVISÓRIO)
+        if (action === "delete_payment") {
+            const { payment_id } = body;
+            if (!payment_id) return res.status(400).json({ error: "ID do pagamento é obrigatório." });
+
+            await execute("account.payment", "unlink", [[Number(payment_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
         // AÇÃO: BUSCAR DIÁRIOS / CONTAS DE PAGAMENTO (BANCO/CAIXA)
         if (action === "get_payment_journals") {
             const journals = await execute("account.journal", "search_read", [[["type", "in", ["bank", "cash"]]]], {
@@ -74,7 +126,6 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: "Campos obrigatórios não informados." });
             }
 
-            // Cria o wizard de registro de pagamento no Odoo vinculado à fatura
             const wizardId = await execute("account.payment.register", "create", [{
                 journal_id: Number(journal_id),
                 amount: Number(amount),
@@ -87,7 +138,6 @@ export default async function handler(req, res) {
             });
 
             if (wizardId) {
-                // Executa a confirmação do pagamento
                 await execute("account.payment.register", "action_create_payments", [[wizardId]], {
                     context: {
                         active_model: "account.move",
