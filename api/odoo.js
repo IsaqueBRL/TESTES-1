@@ -141,7 +141,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Atualizar Fatura
+        // AÇÃO: Atualizar / Adicionar Linhas na Fatura
         if (action === "update_sale") {
             const { order_id, partner_id, payment_term_id, lines } = body;
             
@@ -156,7 +156,16 @@ export default async function handler(req, res) {
 
             for (const l of lines) {
                 if (l.id) {
+                    // Atualiza linha existente
                     await execute("account.move.line", "write", [[Number(l.id)], {
+                        product_id: Number(l.product_id),
+                        quantity: Number(l.qty),
+                        price_unit: Number(l.price)
+                    }]);
+                } else if (l.product_id) {
+                    // Cria nova linha no Odoo vinculada a esta fatura
+                    await execute("account.move.line", "create", [{
+                        move_id: Number(order_id),
                         product_id: Number(l.product_id),
                         quantity: Number(l.qty),
                         price_unit: Number(l.price)
