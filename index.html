@@ -1,294 +1,860 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deuris Candy 2 - Painel de Controle</title>
+    <title>Deuris Candy 2 - Sistema de Gestão</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
-            margin: 0;
-            padding: 20px;
+        :root {
+            --primary-color: #714B67;
+            --primary-hover: #5a3b52;
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #e0e0e0;
+            --success-color: #2e7d32;
+            --danger-color: #c62828;
+            --danger-hover: #b71c1c;
+            --edit-color: #1976d2;
+            --warning-color: #f57c00;
         }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .header h1 {
-            color: #4A2E35;
-            margin-bottom: 5px;
-        }
-        .header p {
-            color: #777;
-            margin: 0;
-        }
-        .nav-buttons {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .btn-main {
-            background-color: #6a425c;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-            margin: 0 5px;
-        }
-        .btn-main:hover {
-            background-color: #523347;
-        }
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .btn-back {
-            background-color: #6c757d;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .search-bar {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .search-bar input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-        }
-        .search-bar button {
-            background-color: #6a425c;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .count-info {
-            font-size: 13px;
-            color: #666;
-            text-align: center;
-            margin-bottom: 15px;
-        }
-        /* Estilos da Tabela de Produtos */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: #fff;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .data-table th {
-            background-color: #6a425c;
-            color: white;
-            text-align: left;
-            font-size: 13px;
-            padding: 10px;
-        }
-        .data-table td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            font-size: 13px;
-        }
-        .badge-category {
-            background: #f0f0f0;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-        .badge-stock {
-            background: #E8F5E9;
-            color: #2E7D32;
-            padding: 3px 8px;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 11px;
-        }
-        .btn-edit {
-            background-color: #6a425c;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        .btn-edit:hover {
-            background-color: #523347;
-        }
-        /* Estilos do Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-        }
-        .modal-content {
-            max-width: 650px;
-            margin: 50px auto;
-            background: #fff;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-        }
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-            margin-top: 15px;
-        }
-        .btn-modal {
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            color: white;
-        }
-        .btn-close { background-color: #6c757d; }
-        .btn-delete { background-color: #d9534f; }
-        .btn-save { background-color: #6a425c; }
-        .btn-launch { background-color: #5c384f; }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-color); padding: 15px; }
+        .container { max-width: 1100px; margin: 0 auto; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        
+        header { text-align: center; margin-bottom: 20px; }
+        header h1 { color: var(--primary-color); font-size: 26px; margin-bottom: 5px; }
+        header p { color: #666; font-size: 14px; }
+
+        .home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 10px; gap: 20px; text-align: center; }
+        .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 600px; flex-wrap: wrap; }
+        .btn-menu { flex: 1; min-width: 140px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        .btn-menu:hover { background-color: var(--primary-hover); }
+
+        .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .btn-back { background-color: #666; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+        .btn-action { background-color: var(--primary-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .btn-action:hover { background-color: var(--primary-hover); }
+
+        .search-box { display: flex; gap: 8px; margin-bottom: 15px; }
+        .search-box input { flex: 1; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; outline: none; }
+        .search-box button { padding: 10px 18px; background-color: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; white-space: nowrap; }
+
+        .status { text-align: center; margin-bottom: 15px; font-size: 14px; color: #555; font-weight: 500; }
+
+        .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border-color); }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; text-align: left; }
+        th { background-color: var(--primary-color); color: white; font-weight: 600; padding: 12px 14px; font-size: 14px; }
+        td { padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
+        tr:hover { background-color: #f8f9fa; }
+        
+        .price-col { font-weight: 600; color: #222; }
+        .cost-col { color: #666; font-weight: 500; }
+        .category-badge { background-color: #f0f0f0; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #444; border: 1px solid #ddd; }
+        
+        .stock-badge, .status-badge { display: inline-block; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .stock-in, .status-sale { background-color: #e8f5e9; color: var(--success-color); }
+        .stock-out { background-color: #ffebee; color: var(--danger-color); }
+        .status-draft { background-color: #fff3e0; color: var(--warning-color); }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; }
+        .modal h2 { color: var(--primary-color); font-size: 18px; }
+        .modal label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: -8px; }
+        .modal input, .modal select { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; outline: none; background: #fff; width: 100%; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+        .btn-cancel { background-color: #777; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn-delete { background-color: var(--danger-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn-delete:hover { background-color: var(--danger-hover); }
+
+        /* Estilo Botão Nuvem Salvar (Estilo Odoo) */
+        .btn-cloud-save { background-color: transparent; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--primary-color); transition: background-color 0.2s; }
+        .btn-cloud-save:hover { background-color: #f0eaf0; }
+        .btn-cloud-save svg { width: 18px; height: 18px; fill: currentColor; }
+
+        .btn-add-line { display: inline-block; background: none; border: none; color: #00878a; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 8px; text-decoration: underline; }
+        .btn-add-line:hover { color: #005658; }
+        .btn-remove-line { background: none; border: none; color: var(--danger-color); font-weight: bold; cursor: pointer; font-size: 16px; }
+
+        .view-section { display: none; }
+        .active-section { display: block !important; }
+
+        /* Estilo Autocomplete Parceiros */
+        .partner-search-container { position: relative; width: 100%; }
+        .partner-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 200px; overflow-y: auto; z-index: 1100; display: none; }
+        .partner-dropdown-item { padding: 10px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+        .partner-dropdown-item:hover { background-color: #f4f6f9; }
+        .partner-create-item { font-weight: bold; color: var(--primary-color); background-color: #fdf8fc; }
+        .partner-create-item:hover { background-color: #f7eaf4; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <!-- Cabeçalho Principal -->
-        <div class="header">
-            <h1>Deuris Candy 2</h1>
-            <p>Painel de Controle</p>
+<div class="container">
+    <header>
+        <h1>Deuris Candy 2</h1>
+        <p>Painel de Controle</p>
+    </header>
+
+    <!-- TELA INICIAL -->
+    <div id="homeSection" class="home-screen active-section">
+        <h3>Selecione uma opção:</h3>
+        <div class="menu-buttons">
+            <button class="btn-menu" onclick="mostrarTela('produtosSection'); buscarProdutos();">PRODUTOS</button>
+            <button class="btn-menu" onclick="mostrarTela('estoqueSection'); buscarEstoque();">ESTOQUE</button>
+            <button class="btn-menu" onclick="mostrarTela('vendasSection'); buscarVendas();">VENDAS</button>
+        </div>
+    </div>
+
+    <!-- TELA DE PRODUTOS -->
+    <div id="produtosSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <h2>Gestão de Produtos</h2>
         </div>
 
-        <!-- Menu de Navegação -->
-        <div class="nav-buttons">
-            <p style="font-weight: bold; margin-bottom: 10px;">Selecione uma opção:</p>
-            <button class="btn-main" onclick="carregarProdutos()">PRODUTOS</button>
-            <button class="btn-main">ESTOQUE</button>
-            <button class="btn-main">VENDAS</button>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('produtos')">
+            <button onclick="buscarProdutos()">Pesquisar</button>
         </div>
 
-        <!-- Conteúdo Principal - Gestão de Produtos -->
-        <div class="top-bar">
-            <button class="btn-back">← Voltar</button>
-            <h2 style="color: #333; margin: 0;">Gestão de Produtos</h2>
+        <div id="statusProdutos" class="status">Carregando produtos...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>DESCRIÇÃO</th>
+                        <th>CATEGORIA</th>
+                        <th>PREÇO VENDA</th>
+                        <th>CUSTO</th>
+                        <th>ESTOQUE</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsProdutos"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TELA DE ESTOQUE -->
+    <div id="estoqueSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <h2>Detalhamento do Estoque</h2>
         </div>
 
-        <div class="search-bar">
-            <input type="text" id="inputBuscaProduto" placeholder="Digite o nome do produto...">
-            <button onclick="buscarProduto()">Pesquisar</button>
+        <div class="search-box">
+            <input type="text" id="searchEstoqueInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('estoque')">
+            <button onclick="buscarEstoque()">Pesquisar</button>
         </div>
 
-        <p class="count-info" id="countProdutos">20 produto(s) encontrado(s):</p>
+        <div id="statusEstoque" class="status">Carregando estoque...</div>
 
-        <!-- Tabela de Produtos (Com a Coluna Ações Restaurada) -->
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>DESCRIÇÃO</th>
-                    <th>CATEGORIA</th>
-                    <th>PREÇO VENDA</th>
-                    <th>CUSTO</th>
-                    <th>ESTOQUE</th>
-                    <th style="text-align: center;">AÇÕES</th>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>LOCAL</th>
+                        <th>PRODUTO</th>
+                        <th>QUANTIDADE</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsEstoque"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TELA DE VENDAS -->
+    <div id="vendasSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h2>Faturas de Vendas</h2>
+                <button class="btn-action" onclick="criarNovaVenda()">+ Nova Venda</button>
+            </div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="searchVendasInput" placeholder="Digite o número da fatura ou cliente..." oninput="debounceSearch('vendas')">
+            <button onclick="buscarVendas()">Pesquisar</button>
+        </div>
+
+        <div id="statusVendas" class="status">Carregando vendas...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>NÚMERO DA FATURA</th>
+                        <th>CLIENTE</th>
+                        <th>STATUS</th>
+                        <th>VALOR TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsVendas"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Criar Parceiro -->
+<div class="modal-overlay" id="createPartnerModal" style="z-index: 1200;">
+    <div class="modal" style="max-width: 420px;">
+        <h2>Criar Parceiro</h2>
+        
+        <label>Nome do Cliente *</label>
+        <input type="text" id="newPartnerName">
+
+        <label>E-mail</label>
+        <input type="email" id="newPartnerEmail" placeholder="exemplo@email.com">
+
+        <label>Telefone</label>
+        <input type="text" id="newPartnerPhone" placeholder="(00) 00000-0000">
+
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="fecharModalParceiro()">Descartar</button>
+            <button class="btn-save" id="btnSalvarParceiro" onclick="salvarNovoParceiroOdoo()">Salvar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Detalhes / Editar Fatura -->
+<div class="modal-overlay" id="saleModal">
+    <div class="modal" style="max-width: 750px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 id="saleModalTitle">Fatura</h2>
+                <!-- Botão Salvar (Nuvem com Seta) -->
+                <button id="btnCloudSave" class="btn-cloud-save" onclick="salvarApenasProvisorio()" title="Salvar alterações">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                </button>
+            </div>
+            <span id="saleStatusBadge" class="status-badge"></span>
+        </div>
+        
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 220px;" class="partner-search-container">
+                <label>Cliente</label>
+                <input type="text" id="saleCustomerInput" placeholder="Buscar ou criar cliente..." oninput="buscarParceiroOdoo(this.value)" autocomplete="off" disabled>
+                <input type="hidden" id="saleCustomerId">
+                <div id="partnerDropdown" class="partner-dropdown"></div>
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+                <label>Condição de Pagamento</label>
+                <select id="salePaymentTerm" disabled></select>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas da Fatura</h3>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>PRODUTO</th>
+                        <th style="width: 90px;">QTD</th>
+                        <th style="width: 110px;">PREÇO UNIT.</th>
+                        <th>TOTAL</th>
+                        <th style="width: 40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="saleLinesBody"></tbody>
+            </table>
+        </div>
+
+        <button id="btnAddLine" class="btn-add-line" onclick="adicionarLinhaProduto()">Adicionar uma linha</button>
+
+        <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
+            Valor Total: <span id="saleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
+        </div>
+
+        <div class="modal-actions" id="saleModalActions"></div>
+    </div>
+</div>
+
+<script>
+    let timer = null;
+    let partnerSearchTimer = null;
+    let currentOrderId = null;
+    let availableProducts = [];
+    let isCurrentInvoiceEditable = false;
+
+    function mostrarTela(idTela) {
+        document.getElementById('homeSection').style.display = 'none';
+        document.getElementById('produtosSection').style.display = 'none';
+        document.getElementById('estoqueSection').style.display = 'none';
+        document.getElementById('vendasSection').style.display = 'none';
+
+        const telaTarget = document.getElementById(idTela);
+        telaTarget.style.display = idTela === 'homeSection' ? 'flex' : 'block';
+    }
+
+    function debounceSearch(tipo) {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            if (tipo === 'produtos') buscarProdutos();
+            if (tipo === 'estoque') buscarEstoque();
+            if (tipo === 'vendas') buscarVendas();
+        }, 300);
+    }
+
+    /* 1. BUSCAR PRODUTOS */
+    async function buscarProdutos() {
+        const query = document.getElementById("searchInput").value.trim();
+        const status = document.getElementById("statusProdutos");
+        const results = document.getElementById("resultsProdutos");
+
+        status.innerText = "Pesquisando produtos...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_products", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhum produto encontrado.";
+                results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #888;">Nenhum produto encontrado</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} produto(s) encontrado(s):`;
+            results.innerHTML = "";
+
+            data.result.forEach(prod => {
+                const category = Array.isArray(prod.categ_id) ? prod.categ_id[1] : "Geral";
+                const price = prod.list_price ?? 0;
+                const cost = prod.standard_price ?? 0;
+                const qty = prod.qty_available ?? 0;
+                const qtyClass = qty > 0 ? "stock-in" : "stock-out";
+
+                results.innerHTML += `
+                    <tr>
+                        <td><strong>${prod.name || '-'}</strong></td>
+                        <td><span class="category-badge">${category}</span></td>
+                        <td class="price-col">R$ ${price.toFixed(2)}</td>
+                        <td class="cost-col">R$ ${cost.toFixed(2)}</td>
+                        <td><span class="stock-badge ${qtyClass}">${qty} un</span></td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar produtos.";
+            results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    /* 2. BUSCAR ESTOQUE */
+    async function buscarEstoque() {
+        const query = document.getElementById("searchEstoqueInput").value.trim();
+        const status = document.getElementById("statusEstoque");
+        const results = document.getElementById("resultsEstoque");
+
+        status.innerText = "Pesquisando estoque...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_stock", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhum registro de estoque encontrado.";
+                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhum registro de estoque encontrado</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} item(ns) em estoque encontrados:`;
+            results.innerHTML = "";
+
+            data.result.forEach(item => {
+                const locationName = Array.isArray(item.location_id) ? item.location_id[1] : "-";
+                const productName = Array.isArray(item.product_id) ? item.product_id[1] : "-";
+                const qty = item.quantity ?? 0;
+
+                results.innerHTML += `
+                    <tr>
+                        <td>${locationName}</td>
+                        <td><strong>${productName}</strong></td>
+                        <td><span class="stock-badge stock-in">${qty} un</span></td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar estoque.";
+            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    /* 3. BUSCAR VENDAS */
+    async function buscarVendas() {
+        const query = document.getElementById("searchVendasInput").value.trim();
+        const status = document.getElementById("statusVendas");
+        const results = document.getElementById("resultsVendas");
+
+        status.innerText = "Pesquisando faturas...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_sales", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhuma fatura encontrada.";
+                results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #888;">Nenhuma fatura encontrada</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} fatura(s) encontrada(s):`;
+            results.innerHTML = "";
+
+            data.result.forEach(sale => {
+                const clientName = Array.isArray(sale.partner_id) ? sale.partner_id[1] : "-";
+                const orderNum = sale.name || "-";
+                const total = sale.amount_total ?? 0;
+                const isPosted = sale.state === 'posted';
+
+                results.innerHTML += `
+                    <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
+                        <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
+                        <td>${clientName}</td>
+                        <td>
+                            <span class="status-badge ${isPosted ? 'status-sale' : 'status-draft'}">
+                                ${isPosted ? 'Lançado' : 'Provisório'}
+                            </span>
+                        </td>
+                        <td class="price-col">R$ ${total.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar faturas.";
+            results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    /* 4. CRIAR NOVA VENDA */
+    async function criarNovaVenda() {
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "create_sale" })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.id) {
+                abrirDetalhesVenda(data.id);
+                buscarVendas();
+            } else {
+                alert(data.error || "Erro ao criar nova venda.");
+            }
+        } catch (e) {
+            alert("Erro de conexão ao tentar criar nova venda.");
+        }
+    }
+
+    /* 5. DETALHES DA FATURA E PARCEIROS */
+    async function abrirDetalhesVenda(orderId) {
+        currentOrderId = orderId;
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_sale_detail", order_id: orderId })
+            });
+
+            const data = await response.json();
+            if (data.error) return alert(data.error);
+
+            const invoice = data.order;
+            availableProducts = data.products || [];
+
+            document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name || 'Nova'}`;
+            
+            const currentPartnerId = Array.isArray(invoice.partner_id) ? invoice.partner_id[0] : invoice.partner_id;
+            const currentPartnerName = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : "";
+            
+            document.getElementById('saleCustomerId').value = currentPartnerId || "";
+            document.getElementById('saleCustomerInput').value = currentPartnerName || "";
+
+            const isPosted = invoice.state === 'posted';
+            isCurrentInvoiceEditable = !isPosted;
+
+            const statusBadge = document.getElementById('saleStatusBadge');
+            statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
+            statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
+
+            // Exibir o botão da nuvem apenas se o status for Provisório
+            document.getElementById('btnCloudSave').style.display = isCurrentInvoiceEditable ? 'inline-flex' : 'none';
+
+            const selectTerm = document.getElementById('salePaymentTerm');
+            selectTerm.innerHTML = '<option value="">Selecione...</option>';
+            (data.payment_terms || []).forEach(term => {
+                const selected = (Array.isArray(invoice.invoice_payment_term_id) && invoice.invoice_payment_term_id[0] === term.id) ? 'selected' : '';
+                selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
+            });
+
+            document.getElementById('saleCustomerInput').disabled = !isCurrentInvoiceEditable;
+            selectTerm.disabled = !isCurrentInvoiceEditable;
+            document.getElementById('btnAddLine').style.display = isCurrentInvoiceEditable ? 'inline-block' : 'none';
+
+            renderLines(data.lines || [], isCurrentInvoiceEditable);
+            atualizarBotoesAcao(isPosted, invoice.name);
+
+            document.getElementById('saleModal').style.display = 'flex';
+        } catch (e) {
+            alert('Erro ao carregar detalhes da fatura.');
+        }
+    }
+
+    function buscarParceiroOdoo(query) {
+        clearTimeout(partnerSearchTimer);
+        const dropdown = document.getElementById('partnerDropdown');
+        
+        if (!query.trim()) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        partnerSearchTimer = setTimeout(async () => {
+            try {
+                const res = await fetch('/api/odoo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'search_partners', query })
+                });
+                const data = await res.json();
+                
+                dropdown.innerHTML = '';
+                dropdown.innerHTML += `
+                    <div class="partner-dropdown-item partner-create-item" onclick="abrirModalCriarParceiro('${query.trim()}')">
+                        + Criar e Editar "${query.trim()}"...
+                    </div>
+                `;
+
+                if (data.partners && data.partners.length > 0) {
+                    data.partners.forEach(p => {
+                        dropdown.innerHTML += `
+                            <div class="partner-dropdown-item" onclick="selecionarParceiro(${p.id}, '${p.name.replace(/'/g, "\\'")}')">
+                                ${p.name}
+                            </div>
+                        `;
+                    });
+                }
+
+                dropdown.style.display = 'block';
+            } catch (e) {
+                console.error("Erro na busca de parceiros", e);
+            }
+        }, 250);
+    }
+
+    function selecionarParceiro(id, name) {
+        document.getElementById('saleCustomerId').value = id;
+        document.getElementById('saleCustomerInput').value = name;
+        document.getElementById('partnerDropdown').style.display = 'none';
+    }
+
+    function abrirModalCriarParceiro(nomeDigitado) {
+        document.getElementById('partnerDropdown').style.display = 'none';
+        document.getElementById('newPartnerName').value = nomeDigitado || "";
+        document.getElementById('newPartnerEmail').value = "";
+        document.getElementById('newPartnerPhone').value = "";
+        document.getElementById('createPartnerModal').style.display = 'flex';
+    }
+
+    function fecharModalParceiro() {
+        document.getElementById('createPartnerModal').style.display = 'none';
+    }
+
+    async function salvarNovoParceiroOdoo() {
+        const name = document.getElementById('newPartnerName').value;
+        const email = document.getElementById('newPartnerEmail').value;
+        const phone = document.getElementById('newPartnerPhone').value;
+        const btn = document.getElementById('btnSalvarParceiro');
+
+        if (!name.trim()) return alert("O nome do cliente é obrigatório.");
+
+        btn.innerText = "Salvando...";
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'create_partner', name, email, phone })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                selecionarParceiro(data.id, data.name);
+                fecharModalParceiro();
+                alert(`Cliente "${data.name}" cadastrado e salvo com sucesso no Odoo!`);
+            } else {
+                alert(data.error || 'Erro ao criar parceiro.');
+            }
+        } catch (e) {
+            alert('Erro ao conectar com a API do Odoo.');
+        } finally {
+            btn.innerText = "Salvar";
+            btn.disabled = false;
+        }
+    }
+
+    document.addEventListener('click', function(e) {
+        const container = document.querySelector('.partner-search-container');
+        if (container && !container.contains(e.target)) {
+            document.getElementById('partnerDropdown').style.display = 'none';
+        }
+    });
+
+    function renderLines(lines, editavel) {
+        const tbody = document.getElementById('saleLinesBody');
+        tbody.innerHTML = "";
+
+        lines.forEach(line => {
+            const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
+            let options = availableProducts.map(p => 
+                `<option value="${p.id}" ${p.id === prodId ? 'selected' : ''}>${p.display_name}</option>`
+            ).join('');
+
+            tbody.innerHTML += `
+                <tr class="line-row" data-line-id="${line.id || ''}">
+                    <td><select class="line-product" ${editavel ? '' : 'disabled'} onchange="aoSelecionarProduto(this)">${options}</select></td>
+                    <td><input type="number" class="line-qty" value="${line.quantity || 1}" step="1" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
+                    <td><input type="number" class="line-price" value="${line.price_unit || 0}" step="0.01" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
+                    <td class="line-subtotal" style="font-weight:bold;">R$ ${(line.price_subtotal || 0).toFixed(2)}</td>
+                    <td>${editavel ? `<button class="btn-remove-line" onclick="removerLinha(this)">×</button>` : ''}</td>
                 </tr>
-            </thead>
-            <tbody id="tabelaProdutosBody">
-                <!-- Preenchido via JavaScript -->
-            </tbody>
-        </table>
-    </div>
+            `;
+        });
+        recalcularTotais();
+    }
 
-    <!-- Modal Fatura Nova / Provisória -->
-    <div id="modalFatura" class="modal">
-        <div class="modal-content">
-            <!-- Cabeçalho (Botão com ícone de nuvem removido) -->
-            <div class="modal-header">
-                <h3 style="margin: 0; color: #4A2E35;">Fatura Nova</h3>
-                <span style="background-color: #FFF3CD; color: #856404; padding: 4px 8px; border-radius: 12px; font-size: 12px;">Provisório</span>
-            </div>
+    function adicionarLinhaProduto() {
+        if (!isCurrentInvoiceEditable) return;
+        const tbody = document.getElementById('saleLinesBody');
+        
+        let options = `<option value="">Selecione um produto...</option>` + availableProducts.map(p => 
+            `<option value="${p.id}">${p.display_name}</option>`
+        ).join('');
 
-            <!-- Corpo -->
-            <div style="margin-top: 15px;">
-                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-                    <div style="flex: 1;">
-                        <label style="font-size: 12px; font-weight: bold; color: #555;">Cliente</label>
-                        <input type="text" id="clienteInput" placeholder="Buscar ou criar cliente..." style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;">
-                    </div>
-                    <div style="flex: 1;">
-                        <label style="font-size: 12px; font-weight: bold; color: #555;">Condição de Pagamento</label>
-                        <select id="condicaoPagamento" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;">
-                            <option value="">Selecione...</option>
-                            <option value="à vista">À Vista</option>
-                            <option value="30 dias">30 dias</option>
-                        </select>
-                    </div>
-                </div>
+        const tr = document.createElement('tr');
+        tr.className = 'line-row';
+        tr.setAttribute('data-line-id', '');
+        tr.innerHTML = `
+            <td><select class="line-product" onchange="aoSelecionarProduto(this)">${options}</select></td>
+            <td><input type="number" class="line-qty" value="1" step="1" oninput="recalcularTotais()"></td>
+            <td><input type="number" class="line-price" value="0.00" step="0.01" oninput="recalcularTotais()"></td>
+            <td class="line-subtotal" style="font-weight:bold;">R$ 0.00</td>
+            <td><button class="btn-remove-line" onclick="removerLinha(this)">×</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
 
-                <h4 style="margin: 15px 0 8px 0; color: #4A2E35;">Linhas da Fatura</h4>
+    function aoSelecionarProduto(selectElem) {
+        const prodId = Number(selectElem.value);
+        const row = selectElem.closest('.line-row');
+        const priceInput = row.querySelector('.line-price');
 
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
-                    <thead>
-                        <tr style="background-color: #6a425c; color: white; text-align: left; font-size: 12px;">
-                            <th style="padding: 8px;">PRODUTO</th>
-                            <th style="padding: 8px; text-align: center;">QTD</th>
-                            <th style="padding: 8px; text-align: center;">PREÇO UNIT.</th>
-                            <th style="padding: 8px; text-align: right;">TOTAL</th>
-                            <th style="padding: 8px; text-align: center;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="linhasFatura">
-                        <!-- Preenchido via JavaScript -->
-                    </tbody>
-                </table>
+        if (prodId) {
+            const product = availableProducts.find(p => p.id === prodId);
+            if (product && product.list_price) {
+                priceInput.value = product.list_price;
+            }
+        }
+        recalcularTotais();
+    }
 
-                <div style="text-align: center; margin: 15px 0;">
-                    <a href="#" onclick="adicionarLinhaFatura()" style="color: #008080; font-weight: bold; text-decoration: none;">Adicionar uma linha</a>
-                </div>
+    function removerLinha(btn) {
+        btn.closest('.line-row').remove();
+        recalcularTotais();
+    }
 
-                <div style="text-align: right; font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #4A2E35;">
-                    Valor Total: <span id="valorTotalFatura">R$ 0.00</span>
-                </div>
-            </div>
+    function recalcularTotais() {
+        let totalGeral = 0;
+        document.querySelectorAll('.line-row').forEach(row => {
+            const qty = parseFloat(row.querySelector('.line-qty').value) || 0;
+            const price = parseFloat(row.querySelector('.line-price').value) || 0;
+            const subtotal = qty * price;
+            row.querySelector('.line-subtotal').innerText = `R$ ${subtotal.toFixed(2)}`;
+            totalGeral += subtotal;
+        });
 
-            <!-- Rodapé com o novo botão "Salvar" no canto inferior direito -->
-            <div class="modal-footer">
-                <button type="button" class="btn-modal btn-close" onclick="fecharModalFatura()">Fechar</button>
-                <button type="button" class="btn-modal btn-delete" onclick="excluirFatura()">Excluir</button>
-                <button type="button" class="btn-modal btn-save" id="btnSalvarFatura" onclick="salvarFaturaProvisoria()">Salvar</button>
-                <button type="button" class="btn-modal btn-launch" onclick="lancarFatura()">Lançar</button>
-            </div>
-        </div>
-    </div>
+        document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
+    }
 
-    <!-- Script Principal -->
-    <script src="odoo.js"></script>
+    function atualizarBotoesAcao(isPosted, invoiceName) {
+        const container = document.getElementById('saleModalActions');
+        container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
+
+        const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
+
+        if (isPosted) {
+            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
+        } else {
+            if (semNumero) {
+                container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
+            }
+            container.innerHTML += `<button class="btn-save" onclick="salvarELancarPedido()">Lançar</button>`;
+        }
+    }
+
+    async function excluirFatura() {
+        if (!currentOrderId) return;
+
+        if (!confirm("Tem certeza que deseja excluir esta fatura provisória? Esta ação não poderá ser desfeita.")) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_sale', order_id: currentOrderId })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                alert('Fatura excluída com sucesso!');
+                fecharSaleModal();
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao excluir a fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao tentar excluir a fatura.');
+        }
+    }
+
+    async function destravarParaEdicao() {
+        try {
+            await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: false })
+            });
+
+            isCurrentInvoiceEditable = true;
+            document.getElementById('saleCustomerInput').disabled = false;
+            document.getElementById('salePaymentTerm').disabled = false;
+            document.getElementById('btnAddLine').style.display = 'inline-block';
+            document.getElementById('btnCloudSave').style.display = 'inline-flex';
+            document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
+            document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
+
+            const statusBadge = document.getElementById('saleStatusBadge');
+            statusBadge.innerText = 'Provisório';
+            statusBadge.className = 'status-badge status-draft';
+
+            atualizarBotoesAcao(false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
+            alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Salvar ou Lançar.');
+        } catch (e) {
+            alert('Erro ao alterar status para Provisório.');
+        }
+    }
+
+    // Função acionada ao clicar na Nuvem de Salvar
+    async function salvarApenasProvisorio() {
+        const linesData = [];
+        document.querySelectorAll('.line-row').forEach(row => {
+            const prodVal = row.querySelector('.line-product').value;
+            if (prodVal) {
+                linesData.push({
+                    id: row.getAttribute('data-line-id') || null,
+                    product_id: prodVal,
+                    qty: row.querySelector('.line-qty').value,
+                    price: row.querySelector('.line-price').value
+                });
+            }
+        });
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_sale',
+                    order_id: currentOrderId,
+                    partner_id: document.getElementById('saleCustomerId').value,
+                    payment_term_id: document.getElementById('salePaymentTerm').value,
+                    lines: linesData,
+                    post_invoice: false
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert('Alterações salvas no Odoo com sucesso (Status permanece Provisório)!');
+                abrirDetalhesVenda(currentOrderId);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao salvar alterações na fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao salvar fatura.');
+        }
+    }
+
+    // Função acionada ao clicar em "Lançar"
+    async function salvarELancarPedido() {
+        const linesData = [];
+        document.querySelectorAll('.line-row').forEach(row => {
+            const prodVal = row.querySelector('.line-product').value;
+            if (prodVal) {
+                linesData.push({
+                    id: row.getAttribute('data-line-id') || null,
+                    product_id: prodVal,
+                    qty: row.querySelector('.line-qty').value,
+                    price: row.querySelector('.line-price').value
+                });
+            }
+        });
+
+        try {
+            await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_sale',
+                    order_id: currentOrderId,
+                    partner_id: document.getElementById('saleCustomerId').value,
+                    payment_term_id: document.getElementById('salePaymentTerm').value,
+                    lines: linesData,
+                    post_invoice: true
+                })
+            });
+
+            fecharSaleModal();
+            alert('Fatura confirmada e lançada com sucesso!');
+            buscarVendas();
+        } catch (e) {
+            alert('Erro ao lançar fatura.');
+        }
+    }
+
+    function fecharSaleModal() {
+        document.getElementById('saleModal').style.display = 'none';
+    }
+</script>
+
 </body>
 </html>
