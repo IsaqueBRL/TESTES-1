@@ -75,7 +75,6 @@
         .btn-add-line:hover { color: #005658; }
         .btn-remove-line { background: none; border: none; color: var(--danger-color); font-weight: bold; cursor: pointer; font-size: 16px; }
 
-        /* Selo PAGO no estilo Odoo */
         .ribbon-pago {
             position: absolute;
             top: 18px;
@@ -107,6 +106,13 @@
             border-radius: 8px;
             margin-bottom: 10px;
             background-color: #fafafa;
+        }
+
+        .payment-edit-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 8px;
         }
     </style>
 </head>
@@ -316,12 +322,12 @@
 
 <!-- Modal: Lista de Pagamentos / Alterações do Pagamento -->
 <div class="modal-overlay" id="paymentsListModal" style="z-index: 1150;">
-    <div class="modal" style="max-width: 520px;">
+    <div class="modal" style="max-width: 550px;">
         <h2>Pagamentos Registrados</h2>
         <div id="paymentsContainer" style="margin-top: 10px;">
             <p style="text-align: center; color: #666;">Carregando pagamentos...</p>
         </div>
-        <div class="modal-actions">
+        <div class="modal-actions" id="paymentsListFooterActions">
             <button class="btn-cancel" onclick="fecharModalListaPagamentos()">Fechar</button>
         </div>
     </div>
@@ -330,7 +336,6 @@
 <!-- Modal: Detalhes / Editar Fatura -->
 <div class="modal-overlay" id="saleModal">
     <div class="modal" style="max-width: 750px;">
-        <!-- Selo PAGO na fatura -->
         <div id="ribbonPagoBadge" class="ribbon-pago" style="display: none;">PAGO</div>
 
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -385,6 +390,7 @@
     let currentOrderTotal = 0;
     let availableProducts = [];
     let isCurrentInvoiceEditable = false;
+    let availableJournals = [];
 
     function mostrarTela(idTela) {
         document.getElementById('homeSection').style.display = 'none';
@@ -710,7 +716,6 @@
             const isPaid = invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment';
             isCurrentInvoiceEditable = !isPosted;
 
-            // Selo visual PAGO
             document.getElementById('ribbonPagoBadge').style.display = isPaid ? 'block' : 'none';
 
             const statusBadge = document.getElementById('saleStatusBadge');
@@ -737,20 +742,30 @@
         }
     }
 
-    async function abrirModalPagamento() {
+    async function carregarDiarios() {
+        if (availableJournals.length > 0) return availableJournals;
         try {
             const res = await fetch('/api/odoo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'get_payment_journals' })
             });
-
             const data = await res.json();
+            availableJournals = data.result || [];
+            return availableJournals;
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async function abrirModalPagamento() {
+        try {
+            const journals = await carregarDiarios();
             const selectJournal = document.getElementById('payJournalSelect');
             selectJournal.innerHTML = '';
 
-            if (data.result && data.result.length > 0) {
-                data.result.forEach(j => {
+            if (journals.length > 0) {
+                journals.forEach(j => {
                     selectJournal.innerHTML += `<option value="${j.id}">${j.name}</option>`;
                 });
             } else {
@@ -771,10 +786,15 @@
 
     async function abrirModalPagamentosEntrada() {
         const container = document.getElementById('paymentsContainer');
+        const footerActions = document.getElementById('paymentsListFooterActions');
         container.innerHTML = `<p style="text-align: center; color: #666;">Carregando pagamentos...</p>`;
+        footerActions.innerHTML = `<button class="btn-cancel" onclick="fecharModalListaPagamentos()">Fechar</button>`;
+        
         document.getElementById('paymentsListModal').style.display = 'flex';
 
         try {
+            const journals = await carregarDiarios();
+
             const res = await fetch('/api/odoo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -788,15 +808,55 @@
             }
 
             container.innerHTML = '';
+            let hasDraft = false;
+            let draftPaymentId = null;
+
             data.payments.forEach(p => {
                 const isDraft = p.state === 'draft';
+                const currentJournalId = Array.isArray(p.journal_id) ? p.journal_id[0] : p.journal_id;
                 const journalName = Array.isArray(p.journal_id) ? p.journal_id[1] : '-';
-                
-                let actionsHtml = '';
-                if (!isDraft) {
-                    actionsHtml = `<button class="btn-action" style="background-color: var(--warning-color); padding: 6px 12px; font-size: 13px;" onclick="voltarPagamentoProvisorio(${p.id})">Editar (Voltar para Provisório)</button>`;
+
+                if (isDraft) {
+                    hasDraft = true;
+                    draftPaymentId = p.id;
+                }
+
+                let contentHtml = '';
+
+                if (isDraft) {
+                    let journalOptions = journals.map(j => `<option value="${j.id}" ${j.id === currentJournalId ? 'selected' : ''}>${j.name}</option>`).join('');
+
+                    contentHtml = `
+                        <div class="payment-edit-grid">
+                            <div>
+                                <label>Diário / Conta</label>
+                                <select id="editPayJournal_${p.id}">${journalOptions}</select>
+                            </div>
+                            <div>
+                                <label>Valor (R$)</label>
+                                <input type="number" id="editPayAmount_${p.id}" value="${p.amount || 0}" step="0.01">
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label>Data do Pagamento</label>
+                                <input type="date" id="editPayDate_${p.id}" value="${p.date || ''}">
+                            </div>
+                        </div>
+                    `;
                 } else {
-                    actionsHtml = `<button class="btn-delete" style="padding: 6px 12px; font-size: 13px;" onclick="excluirPagamentoProvisorio(${p.id})">Excluir Pagamento</button>`;
+                    contentHtml = `
+                        <div style="font-size: 13px; color: #555; margin-bottom: 10px;">
+                            <div><strong>Valor:</strong> R$ ${(p.amount || 0).toFixed(2)}</div>
+                            <div><strong>Diário/Conta:</strong> ${journalName}</div>
+                            <div><strong>Data:</strong> ${p.date || '-'}</div>
+                        </div>
+                    `;
+                }
+
+                let topActionHtml = '';
+                if (!isDraft) {
+                    topActionHtml = `<button class="btn-action" style="background-color: var(--warning-color); padding: 6px 12px; font-size: 13px;" onclick="voltarPagamentoProvisorio(${p.id})">Editar (Voltar para Provisório)</button>`;
+                } else {
+                    topActionHtml = `<button class="btn-save" style="padding: 6px 12px; font-size: 13px;" onclick="salvarELancarPagamentoProvisorio(${p.id})">Lançar</button>`;
                 }
 
                 container.innerHTML += `
@@ -807,17 +867,21 @@
                                 ${isDraft ? 'Provisório' : 'Pago'}
                             </span>
                         </div>
-                        <div style="font-size: 13px; color: #555; margin-bottom: 10px;">
-                            <div><strong>Valor:</strong> R$ ${(p.amount || 0).toFixed(2)}</div>
-                            <div><strong>Diário/Conta:</strong> ${journalName}</div>
-                            <div><strong>Data:</strong> ${p.date || '-'}</div>
-                        </div>
-                        <div style="text-align: right;">
-                            ${actionsHtml}
+                        ${contentHtml}
+                        <div style="text-align: right; margin-top: 10px;">
+                            ${topActionHtml}
                         </div>
                     </div>
                 `;
             });
+
+            // Adiciona botão Excluir no rodapé se houver pagamento em Provisório
+            if (hasDraft && draftPaymentId) {
+                footerActions.innerHTML = `
+                    <button class="btn-delete" onclick="excluirPagamentoProvisorio(${draftPaymentId})">Excluir Pagamento</button>
+                    <button class="btn-cancel" onclick="fecharModalListaPagamentos()">Fechar</button>
+                `;
+            }
 
         } catch (e) {
             container.innerHTML = `<p style="text-align: center; color: red;">Erro ao buscar pagamentos.</p>`;
@@ -826,6 +890,45 @@
 
     function fecharModalListaPagamentos() {
         document.getElementById('paymentsListModal').style.display = 'none';
+    }
+
+    async function salvarELancarPagamentoProvisorio(paymentId) {
+        const journal_id = document.getElementById(`editPayJournal_${paymentId}`).value;
+        const amount = document.getElementById(`editPayAmount_${paymentId}`).value;
+        const date = document.getElementById(`editPayDate_${paymentId}`).value;
+
+        try {
+            // Atualiza campos
+            const updateRes = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'update_payment', payment_id: paymentId, journal_id, amount, date })
+            });
+            const updateData = await updateRes.json();
+            if (!updateData.success) {
+                return alert(updateData.error || 'Erro ao atualizar pagamento.');
+            }
+
+            // Lança / Confirma o pagamento
+            const postRes = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'post_payment', payment_id: paymentId })
+            });
+            const postData = await postRes.json();
+
+            if (postData.success) {
+                alert('Pagamento lançado com sucesso!');
+                fecharModalListaPagamentos();
+                abrirDetalhesVenda(currentOrderId);
+                buscarVendas();
+            } else {
+                alert(postData.error || 'Erro ao lançar pagamento.');
+            }
+
+        } catch (e) {
+            alert('Erro de conexão ao lançar pagamento.');
+        }
     }
 
     async function voltarPagamentoProvisorio(paymentId) {
@@ -863,7 +966,7 @@
             const data = await res.json();
             if (data.success) {
                 alert('Pagamento excluído com sucesso!');
-                abrirModalPagamentosEntrada();
+                fecharModalListaPagamentos();
                 abrirDetalhesVenda(currentOrderId);
                 buscarVendas();
             } else {
