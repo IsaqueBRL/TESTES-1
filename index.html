@@ -28,8 +28,8 @@
         header p { color: #666; font-size: 14px; }
 
         .home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 10px; gap: 20px; text-align: center; }
-        .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 600px; flex-wrap: wrap; }
-        .btn-menu { flex: 1; min-width: 140px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        .menu-buttons { display: flex; gap: 15px; width: 100%; max-width: 800px; flex-wrap: wrap; justify-content: center; }
+        .btn-menu { flex: 1; min-width: 130px; padding: 18px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
         .btn-menu:hover { background-color: var(--primary-hover); }
 
         .top-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
@@ -102,6 +102,7 @@
             <button class="btn-menu" onclick="mostrarTela('produtosSection'); buscarProdutos();">PRODUTOS</button>
             <button class="btn-menu" onclick="mostrarTela('estoqueSection'); buscarEstoque();">ESTOQUE</button>
             <button class="btn-menu" onclick="mostrarTela('vendasSection'); buscarVendas();">VENDAS</button>
+            <button class="btn-menu" onclick="mostrarTela('financeiroSection'); buscarFinanceiro();">FINANCEIRO</button>
         </div>
     </div>
 
@@ -192,6 +193,34 @@
                     </tr>
                 </thead>
                 <tbody id="resultsVendas"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TELA FINANCEIRO -->
+    <div id="financeiroSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <h2>Plano de Contas / Saldo Financeiro</h2>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="searchFinanceiroInput" placeholder="Digite o nome ou código da conta..." oninput="debounceSearch('financeiro')">
+            <button onclick="buscarFinanceiro()">Pesquisar</button>
+        </div>
+
+        <div id="statusFinanceiro" class="status">Carregando contas financeiras...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 140px;">CÓDIGO</th>
+                        <th>NOME DA CONTA</th>
+                        <th style="width: 180px; text-align: right;">SALDO ATUAL</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsFinanceiro"></tbody>
             </table>
         </div>
     </div>
@@ -300,6 +329,7 @@
         document.getElementById('produtosSection').style.display = 'none';
         document.getElementById('estoqueSection').style.display = 'none';
         document.getElementById('vendasSection').style.display = 'none';
+        document.getElementById('financeiroSection').style.display = 'none';
 
         const telaTarget = document.getElementById(idTela);
         telaTarget.style.display = idTela === 'homeSection' ? 'flex' : 'block';
@@ -311,6 +341,7 @@
             if (tipo === 'produtos') buscarProdutos();
             if (tipo === 'estoque') buscarEstoque();
             if (tipo === 'vendas') buscarVendas();
+            if (tipo === 'financeiro') buscarFinanceiro();
         }, 300);
     }
 
@@ -514,7 +545,53 @@
         }
     }
 
-    /* 4. CRIAR NOVA VENDA */
+    /* 4. BUSCAR FINANCEIRO */
+    async function buscarFinanceiro() {
+        const query = document.getElementById("searchFinanceiroInput").value.trim();
+        const status = document.getElementById("statusFinanceiro");
+        const results = document.getElementById("resultsFinanceiro");
+
+        status.innerText = "Pesquisando contas financeiras...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_financial_accounts", query })
+            });
+
+            const data = await response.json();
+
+            if (!data.result || data.result.length === 0) {
+                status.innerText = "Nenhuma conta encontrada.";
+                results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">Nenhuma conta encontrada</td></tr>`;
+                return;
+            }
+
+            status.innerText = `${data.result.length} conta(s) encontrada(s):`;
+            results.innerHTML = "";
+
+            data.result.forEach(acc => {
+                const balance = acc.balance ?? 0;
+                const balanceClass = balance >= 0 ? 'color: var(--success-color);' : 'color: var(--danger-color);';
+
+                results.innerHTML += `
+                    <tr>
+                        <td><strong>${acc.code}</strong></td>
+                        <td><strong>${acc.name}</strong></td>
+                        <td style="text-align: right; font-weight: bold; ${balanceClass}">
+                            R$ ${balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao carregar dados financeiro.";
+            results.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+        }
+    }
+
+    /* 5. CRIAR NOVA VENDA */
     async function criarNovaVenda() {
         try {
             const response = await fetch('/api/odoo', {
@@ -536,7 +613,7 @@
         }
     }
 
-    /* 5. DETALHES DA FATURA E PARCEIROS */
+    /* 6. DETALHES DA FATURA E PARCEIROS */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
         try {
@@ -765,7 +842,6 @@
         document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
     }
 
-    /* Atualizado: Botões de ação no canto inferior direito */
     function atualizarBotoesAcao(isPosted, invoiceName) {
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
@@ -778,7 +854,6 @@
             if (semNumero) {
                 container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
             }
-            // Botão "Salvar" posicionado junto aos outros no canto inferior direito
             container.innerHTML += `<button class="btn-save" onclick="salvarApenasProvisorio()">Salvar</button>`;
             container.innerHTML += `<button class="btn-action" onclick="salvarELancarPedido()">Lançar</button>`;
         }
