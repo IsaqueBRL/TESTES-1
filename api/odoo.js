@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    // Configuração de CORS para permitir requisições sem bloqueio no frontend
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -60,6 +59,20 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
+        // AÇÃO: Atualizar Produto
+        if (action === "update_product") {
+            const { product_id, name, list_price, standard_price } = body;
+            if (!product_id) return res.status(400).json({ error: "ID do produto é obrigatório." });
+
+            const writeData = {};
+            if (name) writeData.name = name;
+            if (list_price !== undefined) writeData.list_price = Number(list_price);
+            if (standard_price !== undefined) writeData.standard_price = Number(standard_price);
+
+            await execute("product.template", "write", [[Number(product_id)], writeData]);
+            return res.status(200).json({ success: true });
+        }
+
         // AÇÃO: Criar Nova Venda / Fatura
         if (action === "create_sale") {
             const newInvoiceId = await execute("account.move", "create", [{
@@ -68,7 +81,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, id: newInvoiceId });
         }
 
-        // AÇÃO: Excluir Fatura (somente faturas rascunho/provisórias sem número)
+        // AÇÃO: Excluir Fatura
         if (action === "delete_sale") {
             const { order_id } = body;
             if (!order_id) {
@@ -89,7 +102,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ partners: result || [] });
         }
 
-        // AÇÃO: Criar Novo Parceiro (Cliente) no Odoo
+        // AÇÃO: Criar Novo Parceiro
         if (action === "create_partner") {
             const { name, email, phone } = body;
             if (!name || !name.trim()) {
@@ -106,7 +119,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, id: newPartnerId, name: name.trim() });
         }
 
-        // AÇÃO: Buscar Estoque (stock.quant)
+        // AÇÃO: Buscar Estoque
         if (action === "get_stock") {
             const query = body.query || "";
             const domain = [["quantity", ">", 0]];
@@ -154,7 +167,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Atualizar / Adicionar Linhas na Fatura (Com opção de apenas salvar ou lançar)
+        // AÇÃO: Atualizar / Adicionar Linhas na Fatura
         if (action === "update_sale") {
             const { order_id, partner_id, payment_term_id, lines, post_invoice } = body;
             
@@ -169,14 +182,12 @@ export default async function handler(req, res) {
 
             for (const l of lines) {
                 if (l.id) {
-                    // Atualiza linha existente
                     await execute("account.move.line", "write", [[Number(l.id)], {
                         product_id: Number(l.product_id),
                         quantity: Number(l.qty),
                         price_unit: Number(l.price)
                     }]);
                 } else if (l.product_id) {
-                    // Cria nova linha no Odoo vinculada a esta fatura
                     await execute("account.move.line", "create", [{
                         move_id: Number(order_id),
                         product_id: Number(l.product_id),
@@ -186,7 +197,6 @@ export default async function handler(req, res) {
                 }
             }
 
-            // Apenas lança a fatura se explicitamente solicitado
             if (post_invoice) {
                 await execute("account.move", "action_post", [[Number(order_id)]]);
             }
@@ -205,7 +215,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO PADRÃO / BUSCAR PRODUTOS (product.template)
+        // AÇÃO PADRÃO / BUSCAR PRODUTOS
         const query = body.query || "";
         const domain = query ? [["name", "ilike", query]] : [];
         const result = await execute("product.template", "search_read", [domain], {
