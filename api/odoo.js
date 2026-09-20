@@ -59,6 +59,61 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
+        // AÇÃO: Buscar Contas Financeiras e Saldo
+        if (action === "get_financial_accounts") {
+            const query = body.query || "";
+            const domain = [["account_type", "in", ["asset_cash", "bank_and_cash"]]];
+            
+            if (query) {
+                domain.push('|', ['name', 'ilike', query], ['code', 'ilike', query]);
+            }
+
+            // Tenta buscar as contas do plano de contas
+            let accounts = await execute("account.account", "search_read", [domain], {
+                fields: ["id", "code", "name", "account_type", "current_balance"],
+                limit: 100
+            });
+
+            // Se a busca por tipo falhar ou vier vazia, busca todas as contas ativas filtrando por nome/código
+            if (!accounts || accounts.length === 0) {
+                const altDomain = query ? ['|', ['name', 'ilike', query], ['code', 'ilike', query]] : [];
+                accounts = await execute("account.account", "search_read", [altDomain], {
+                    fields: ["id", "code", "name", "account_type", "current_balance"],
+                    limit: 100
+                });
+            }
+
+            // Para cada conta, calcula o saldo dos lançamentos contábeis
+            const formattedAccounts = await Promise.all((accounts || []).map(async (acc) => {
+                let balance = acc.current_balance ?? 0;
+
+                try {
+                    const lines = await execute("account.move.line", "read_group", [
+                        [["account_id", "=", acc.id], ["parent_state", "=", "posted"]]
+                    ], {
+                        groupby: ["account_id"],
+                        fields: ["balance"]
+                    });
+
+                    if (lines && lines.length > 0) {
+                        balance = lines[0].balance ?? balance;
+                    }
+                } catch (e) {
+                    // Mantém o saldo padrão caso read_group falhe
+                }
+
+                return {
+                    id: acc.id,
+                    code: acc.code || "-",
+                    name: acc.name || "-",
+                    type: acc.account_type || "-",
+                    balance: balance
+                };
+            }));
+
+            return res.status(200).json({ result: formattedAccounts });
+        }
+
         // AÇÃO: Atualizar Produto
         if (action === "update_product") {
             const { product_id, name, list_price, standard_price } = body;
