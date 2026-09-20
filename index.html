@@ -168,12 +168,15 @@
         }
         .custom-modal-footer {
             padding: 0 18px 18px 18px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
         }
         .custom-modal-btn {
             background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 9px 26px;
+            padding: 9px 24px;
             border-radius: 6px;
             font-size: 0.95rem;
             font-weight: bold;
@@ -182,6 +185,12 @@
         }
         .custom-modal-btn:hover {
             background-color: var(--primary-hover);
+        }
+        .custom-modal-btn-cancel {
+            background-color: #777;
+        }
+        .custom-modal-btn-cancel:hover {
+            background-color: #555;
         }
     </style>
 </head>
@@ -452,32 +461,57 @@
     </div>
 </div>
 
-<!-- Modal: Pop-up Bonito (Alert Customizado) -->
+<!-- Modal: Pop-up Bonito (Alert/Confirm Customizado) -->
 <div id="customModal" class="custom-modal-overlay">
   <div class="custom-modal-box">
     <div id="customModalTitle" class="custom-modal-header">Aviso</div>
     <div id="customModalMessage" class="custom-modal-body">Mensagem</div>
-    <div class="custom-modal-footer">
-      <button class="custom-modal-btn" onclick="fecharModalCustom()">OK</button>
+    <div id="customModalFooter" class="custom-modal-footer">
+      <button class="custom-modal-btn" onclick="fecharModalCustom(true)">OK</button>
     </div>
   </div>
 </div>
 
 <script>
     /* ------------------------------------------------------------
-       POP-UP PERSONALIZADO & SUBST. DO ALERT NATIVO
+       POP-UP PERSONALIZADO & SUBST. DO ALERT/CONFIRM NATIVO
        ------------------------------------------------------------ */
+    let customModalResolve = null;
+
     function mostrarAlerta(mensagem, titulo = 'Aviso') {
         const modal = document.getElementById('customModal');
         if (!modal) return;
         document.getElementById('customModalTitle').innerText = titulo;
         document.getElementById('customModalMessage').innerText = mensagem;
+        document.getElementById('customModalFooter').innerHTML = `
+            <button class="custom-modal-btn" onclick="fecharModalCustom(true)">OK</button>
+        `;
         modal.classList.add('active');
     }
 
-    function fecharModalCustom() {
+    function mostrarConfirmacao(mensagem, titulo = 'Confirmação') {
+        return new Promise((resolve) => {
+            customModalResolve = resolve;
+            const modal = document.getElementById('customModal');
+            if (!modal) return resolve(false);
+            
+            document.getElementById('customModalTitle').innerText = titulo;
+            document.getElementById('customModalMessage').innerText = mensagem;
+            document.getElementById('customModalFooter').innerHTML = `
+                <button class="custom-modal-btn custom-modal-btn-cancel" onclick="fecharModalCustom(false)">Cancelar</button>
+                <button class="custom-modal-btn" onclick="fecharModalCustom(true)">OK</button>
+            `;
+            modal.classList.add('active');
+        });
+    }
+
+    function fecharModalCustom(valor) {
         const modal = document.getElementById('customModal');
         if (modal) modal.classList.remove('active');
+        if (customModalResolve) {
+            customModalResolve(valor);
+            customModalResolve = null;
+        }
     }
 
     window.alert = function(mensagem) {
@@ -1107,7 +1141,8 @@
     }
 
     async function excluirPagamentoProvisorio(paymentId) {
-        if (!confirm("Tem certeza que deseja excluir este pagamento em Provisório?")) return;
+        const confirmado = await mostrarConfirmacao("Tem certeza que deseja excluir este pagamento em Provisório?");
+        if (!confirmado) return;
 
         try {
             const res = await fetch('/api/odoo', {
@@ -1368,18 +1403,46 @@
         } else {
             if (semNumero) {
                 container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
+            } else {
+                container.innerHTML += `<button class="btn-delete" onclick="cancelarFaturaProvisoria()">Cancelar</button>`;
             }
             container.innerHTML += `<button class="btn-save" onclick="salvarApenasProvisorio()">Salvar</button>`;
             container.innerHTML += `<button class="btn-action" onclick="salvarELancarPedido()">Lançar</button>`;
         }
     }
 
+    async function cancelarFaturaProvisoria() {
+        if (!currentOrderId) return;
+
+        const confirmado = await mostrarConfirmacao("Deseja realmente cancelar esta fatura provisória?");
+        if (!confirmado) return;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'cancel_sale', order_id: currentOrderId })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                alert('Fatura cancelada com sucesso!');
+                fecharSaleModal();
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao cancelar a fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao tentar cancelar a fatura.');
+        }
+    }
+
     async function excluirFatura() {
         if (!currentOrderId) return;
 
-        if (!confirm("Tem certeza que deseja excluir esta fatura provisória? Esta ação não poderá ser desfeita.")) {
-            return;
-        }
+        const confirmado = await mostrarConfirmacao("Tem certeza que deseja excluir esta fatura provisória? Esta ação não poderá ser desfeita.");
+        if (!confirmado) return;
 
         try {
             const res = await fetch('/api/odoo', {
