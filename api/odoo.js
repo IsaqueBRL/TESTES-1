@@ -1,115 +1,222 @@
-// Dados Mock/Locais dos Produtos
-let listaProdutos = [
-    { id: 1, descricao: 'DIN DIN DE MARACUJÁ', categoria: 'DIN DIN', precoVenda: 7.00, custo: 2.50, estoque: 4 },
-    { id: 2, descricao: 'DIN DIN DE MARACUJÁ COM CHOCOLATE', categoria: 'DIN DIN', precoVenda: 7.00, custo: 2.50, estoque: 3 },
-    { id: 3, descricao: 'DIN DIN DE MORANGO COM CHOCOLATE', categoria: 'DIN DIN', precoVenda: 7.00, custo: 2.50, estoque: 10 },
-    { id: 4, descricao: 'DIN DIN DE MORANGO COM PEDAÇOS', categoria: 'DIN DIN', precoVenda: 7.00, custo: 2.50, estoque: 13 },
-    { id: 5, descricao: 'DIN DIN DE NINHO COM NUTELLA', categoria: 'DIN DIN', precoVenda: 8.00, custo: 3.50, estoque: 4 },
-    { id: 6, descricao: 'DIN DIN DE OVOMALTINE COM CHOCOLATE', categoria: 'DIN DIN', precoVenda: 7.00, custo: 2.50, estoque: 5 },
-    { id: 7, descricao: 'DIN DIN DE OVOMALTINE COM CHOCOLATE BRANCO', categoria: 'DIN DIN', precoVenda: 7.00, custo: 2.50, estoque: 11 }
-];
+export default async function handler(req, res) {
+    // Configuração de CORS para permitir requisições sem bloqueio no frontend
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader(
+        'Access-Control-Allow-Headers',
+        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    );
 
-// Função para renderizar a tabela de produtos trazendo o botão "Editar" de volta
-function renderizarProdutos(produtos) {
-    const tbody = document.getElementById('tabelaProdutosBody');
-    const count = document.getElementById('countProdutos');
-    
-    if (!tbody) return;
-    
-    tbody.innerHTML = '';
-    count.innerText = `${produtos.length} produto(s) encontrado(s):`;
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
 
-    produtos.forEach(produto => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td style="font-weight: bold;">${produto.descricao}</td>
-            <td><span class="badge-category">${produto.categoria}</span></td>
-            <td>R$ ${produto.precoVenda.toFixed(2)}</td>
-            <td style="color: #666;">R$ ${produto.custo.toFixed(2)}</td>
-            <td><span class="badge-stock">${produto.estoque} un</span></td>
-            <td style="text-align: center;">
-                <button class="btn-edit" onclick="editarProduto(${produto.id})">✏️ Editar</button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
+    const ODOO_URL = "https://deuris-candy-2.odoo.com/jsonrpc";
+    const ODOO_DB = "deuris-candy-2";
+    const ODOO_USER = "isaquemoises14@gmail.com";
+    const ODOO_API_KEY = "0757a6c247886172bff32acdceb0122735bb3278";
 
-// Ação do Botão Editar Produtos
-function editarProduto(id) {
-    const produto = listaProdutos.find(p => p.id === id);
-    if (produto) {
-        console.log("Editando produto:", produto);
-        alert(`Editar produto: ${produto.descricao}`);
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    const action = body.action || "get_products";
+
+    try {
+        const authRes = await fetch(ODOO_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "call",
+                params: {
+                    service: "common",
+                    method: "authenticate",
+                    args: [ODOO_DB, ODOO_USER, ODOO_API_KEY, {}]
+                },
+                id: Date.now()
+            })
+        });
+
+        const authData = await authRes.json();
+        const uid = authData.result;
+
+        if (!uid) {
+            return res.status(401).json({ error: "Falha na autenticação com o Odoo." });
+        }
+
+        const execute = (model, method, args, kwargs = {}) => {
+            return fetch(ODOO_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "call",
+                    params: {
+                        service: "object",
+                        method: "execute_kw",
+                        args: [ODOO_DB, uid, ODOO_API_KEY, model, method, args, kwargs]
+                    },
+                    id: Date.now()
+                })
+            }).then(r => r.json()).then(d => d.result);
+        };
+
+        // AÇÃO: Criar Nova Venda / Fatura
+        if (action === "create_sale") {
+            const newInvoiceId = await execute("account.move", "create", [{
+                move_type: "out_invoice"
+            }]);
+            return res.status(200).json({ success: true, id: newInvoiceId });
+        }
+
+        // AÇÃO: Excluir Fatura (somente faturas rascunho/provisórias sem número)
+        if (action === "delete_sale") {
+            const { order_id } = body;
+            if (!order_id) {
+                return res.status(400).json({ error: "ID da fatura é obrigatório." });
+            }
+            await execute("account.move", "unlink", [[Number(order_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: Buscar Parceiros (Clientes)
+        if (action === "search_partners") {
+            const query = body.query || "";
+            const domain = query ? [["name", "ilike", query]] : [];
+            const result = await execute("res.partner", "search_read", [domain], {
+                fields: ["id", "name", "email", "phone"],
+                limit: 20
+            });
+            return res.status(200).json({ partners: result || [] });
+        }
+
+        // AÇÃO: Criar Novo Parceiro (Cliente) no Odoo
+        if (action === "create_partner") {
+            const { name, email, phone } = body;
+            if (!name || !name.trim()) {
+                return res.status(400).json({ error: "Nome do parceiro é obrigatório." });
+            }
+
+            const newPartnerId = await execute("res.partner", "create", [{
+                name: name.trim(),
+                email: email ? email.trim() : false,
+                phone: phone ? phone.trim() : false,
+                customer_rank: 1
+            }]);
+
+            return res.status(200).json({ success: true, id: newPartnerId, name: name.trim() });
+        }
+
+        // AÇÃO: Buscar Estoque (stock.quant)
+        if (action === "get_stock") {
+            const query = body.query || "";
+            const domain = [["quantity", ">", 0]];
+            if (query) domain.push(["product_id.name", "ilike", query]);
+
+            const result = await execute("stock.quant", "search_read", [domain], {
+                fields: ["id", "location_id", "product_id", "quantity"],
+                limit: 100
+            });
+            return res.status(200).json({ result: result || [] });
+        }
+
+        // AÇÃO: Buscar Faturas de Vendas
+        if (action === "get_sales") {
+            const query = body.query || "";
+            const domain = [["move_type", "=", "out_invoice"]];
+            if (query) {
+                domain.push('|', ['name', 'ilike', query], ['partner_id.name', 'ilike', query]);
+            }
+
+            const result = await execute("account.move", "search_read", [domain], {
+                fields: ["id", "name", "partner_id", "amount_total", "state"],
+                order: "id desc",
+                limit: 100
+            });
+            return res.status(200).json({ result: result || [] });
+        }
+
+        // AÇÃO: Detalhes de uma Fatura
+        if (action === "get_sale_detail") {
+            const { order_id } = body;
+            const invoices = await execute("account.move", "search_read", [[["id", "=", order_id]]], {
+                fields: ["id", "name", "partner_id", "invoice_payment_term_id", "invoice_line_ids", "state"]
+            });
+            if (!invoices || invoices.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
+
+            const invoice = invoices[0];
+            const lines = await execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
+                fields: ["id", "product_id", "quantity", "price_unit", "price_subtotal"]
+            });
+            const partners = await execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 });
+            const paymentTerms = await execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] });
+            const products = await execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] });
+
+            return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
+        }
+
+        // AÇÃO: Atualizar / Adicionar Linhas na Fatura (Com opção de apenas salvar ou lançar)
+        if (action === "update_sale") {
+            const { order_id, partner_id, payment_term_id, lines, post_invoice } = body;
+            
+            const writeData = {
+                invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false
+            };
+            if (partner_id) {
+                writeData.partner_id = Number(partner_id);
+            }
+
+            await execute("account.move", "write", [[Number(order_id)], writeData]);
+
+            for (const l of lines) {
+                if (l.id) {
+                    // Atualiza linha existente
+                    await execute("account.move.line", "write", [[Number(l.id)], {
+                        product_id: Number(l.product_id),
+                        quantity: Number(l.qty),
+                        price_unit: Number(l.price)
+                    }]);
+                } else if (l.product_id) {
+                    // Cria nova linha no Odoo vinculada a esta fatura
+                    await execute("account.move.line", "create", [{
+                        move_id: Number(order_id),
+                        product_id: Number(l.product_id),
+                        quantity: Number(l.qty),
+                        price_unit: Number(l.price)
+                    }]);
+                }
+            }
+
+            // Apenas lança a fatura se explicitamente solicitado
+            if (post_invoice) {
+                await execute("account.move", "action_post", [[Number(order_id)]]);
+            }
+
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: Alterar Status
+        if (action === "toggle_lock_sale") {
+            const { order_id, lock } = body;
+            if (!lock) {
+                await execute("account.move", "button_draft", [[Number(order_id)]]);
+            } else {
+                await execute("account.move", "action_post", [[Number(order_id)]]);
+            }
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO PADRÃO / BUSCAR PRODUTOS (product.template)
+        const query = body.query || "";
+        const domain = query ? [["name", "ilike", query]] : [];
+        const result = await execute("product.template", "search_read", [domain], {
+            fields: ["id", "name", "list_price", "standard_price", "qty_available", "type", "categ_id"],
+            limit: 100
+        });
+
+        const produtosFiltrados = (result || []).filter(prod => prod.type !== "service");
+        return res.status(200).json({ result: produtosFiltrados });
+
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
     }
 }
-
-// Ação de Busca de Produtos
-function buscarProduto() {
-    const termo = document.getElementById('inputBuscaProduto').value.toLowerCase();
-    const filtrados = listaProdutos.filter(p => p.descricao.toLowerCase().includes(termo));
-    renderizarProdutos(filtrados);
-}
-
-// --- Funções do Modal da Fatura ---
-
-function abrirModalFatura() {
-    const modal = document.getElementById('modalFatura');
-    if (modal) modal.style.display = 'block';
-}
-
-function fecharModalFatura() {
-    const modal = document.getElementById('modalFatura');
-    if (modal) modal.style.display = 'none';
-}
-
-// Salvar Fatura Provisória (Acionado pelo novo botão Salvar no rodapé)
-function salvarFaturaProvisoria() {
-    const cliente = document.getElementById('clienteInput').value;
-    const condicao = document.getElementById('condicaoPagamento').value;
-    
-    console.log("Salvando fatura provisória:", { cliente, condicao });
-    alert("Fatura salva com sucesso!");
-}
-
-function excluirFatura() {
-    if (confirm("Tem certeza que deseja excluir esta fatura?")) {
-        fecharModalFatura();
-    }
-}
-
-function lancarFatura() {
-    alert("Fatura lançada com sucesso!");
-    fecharModalFatura();
-}
-
-function adicionarLinhaFatura() {
-    const tbody = document.getElementById('linhasFatura');
-    if (!tbody) return;
-
-    const tr = document.createElement('tr');
-    tr.style.borderBottom = '1px solid #eee';
-    tr.innerHTML = `
-        <td style="padding: 8px;">
-            <select style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
-                ${listaProdutos.map(p => `<option value="${p.id}">${p.descricao}</option>`).join('')}
-            </select>
-        </td>
-        <td style="padding: 8px; text-align: center;">
-            <input type="number" value="1" min="1" style="width: 50px; text-align: center; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
-        </td>
-        <td style="padding: 8px; text-align: center;">
-            <input type="text" value="7.00" style="width: 60px; text-align: center; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
-        </td>
-        <td style="padding: 8px; text-align: right; font-weight: bold;">R$ 7.00</td>
-        <td style="padding: 8px; text-align: center;">
-            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #d9534f; cursor: pointer; font-weight: bold;">✕</button>
-        </td>
-    `;
-    tbody.appendChild(tr);
-}
-
-// Inicialização da Página
-document.addEventListener('DOMContentLoaded', () => {
-    renderizarProdutos(listaProdutos);
-});
