@@ -59,7 +59,48 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
-        // AÇÃO: Buscar Contas Financeiras e Saldo
+        // AÇÃO: BUSCAR DIÁRIOS / CONTAS DE PAGAMENTO (BANCO/CAIXA)
+        if (action === "get_payment_journals") {
+            const journals = await execute("account.journal", "search_read", [[["type", "in", ["bank", "cash"]]]], {
+                fields: ["id", "name", "type"]
+            });
+            return res.status(200).json({ result: journals || [] });
+        }
+
+        // AÇÃO: REGISTRAR PAGAMENTO DA FATURA
+        if (action === "register_payment") {
+            const { order_id, journal_id, amount, payment_date } = body;
+            if (!order_id || !journal_id || !amount) {
+                return res.status(400).json({ error: "Campos obrigatórios não informados." });
+            }
+
+            // Cria o wizard de registro de pagamento no Odoo vinculado à fatura
+            const wizardId = await execute("account.payment.register", "create", [{
+                journal_id: Number(journal_id),
+                amount: Number(amount),
+                payment_date: payment_date || false
+            }], {
+                context: {
+                    active_model: "account.move",
+                    active_ids: [Number(order_id)]
+                }
+            });
+
+            if (wizardId) {
+                // Executa a confirmação do pagamento
+                await execute("account.payment.register", "action_create_payments", [[wizardId]], {
+                    context: {
+                        active_model: "account.move",
+                        active_ids: [Number(order_id)]
+                    }
+                });
+                return res.status(200).json({ success: true });
+            } else {
+                return res.status(500).json({ error: "Não foi possível gerar o pagamento no Odoo." });
+            }
+        }
+
+        // AÇÃO: BUSCAR CONTAS FINANCEIRAS E SALDO
         if (action === "get_financial_accounts") {
             const query = body.query || "";
             const domain = [["account_type", "in", ["asset_cash", "bank_and_cash"]]];
@@ -68,13 +109,11 @@ export default async function handler(req, res) {
                 domain.push('|', ['name', 'ilike', query], ['code', 'ilike', query]);
             }
 
-            // Tenta buscar as contas do plano de contas
             let accounts = await execute("account.account", "search_read", [domain], {
                 fields: ["id", "code", "name", "account_type", "current_balance"],
                 limit: 100
             });
 
-            // Se a busca por tipo falhar ou vier vazia, busca todas as contas ativas filtrando por nome/código
             if (!accounts || accounts.length === 0) {
                 const altDomain = query ? ['|', ['name', 'ilike', query], ['code', 'ilike', query]] : [];
                 accounts = await execute("account.account", "search_read", [altDomain], {
@@ -83,10 +122,8 @@ export default async function handler(req, res) {
                 });
             }
 
-            // Para cada conta, calcula o saldo dos lançamentos contábeis
             const formattedAccounts = await Promise.all((accounts || []).map(async (acc) => {
                 let balance = acc.current_balance ?? 0;
-
                 try {
                     const lines = await execute("account.move.line", "read_group", [
                         [["account_id", "=", acc.id], ["parent_state", "=", "posted"]]
@@ -98,9 +135,7 @@ export default async function handler(req, res) {
                     if (lines && lines.length > 0) {
                         balance = lines[0].balance ?? balance;
                     }
-                } catch (e) {
-                    // Mantém o saldo padrão caso read_group falhe
-                }
+                } catch (e) {}
 
                 return {
                     id: acc.id,
@@ -114,7 +149,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: formattedAccounts });
         }
 
-        // AÇÃO: Atualizar Produto
+        // AÇÃO: ATUALIZAR PRODUTO
         if (action === "update_product") {
             const { product_id, name, list_price, standard_price } = body;
             if (!product_id) return res.status(400).json({ error: "ID do produto é obrigatório." });
@@ -128,7 +163,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Criar Nova Venda / Fatura
+        // AÇÃO: CRIAR NOVA VENDA / FATURA
         if (action === "create_sale") {
             const newInvoiceId = await execute("account.move", "create", [{
                 move_type: "out_invoice"
@@ -136,7 +171,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, id: newInvoiceId });
         }
 
-        // AÇÃO: Excluir Fatura
+        // AÇÃO: EXCLUIR FATURA
         if (action === "delete_sale") {
             const { order_id } = body;
             if (!order_id) {
@@ -146,7 +181,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Buscar Parceiros (Clientes)
+        // AÇÃO: BUSCAR PARCEIROS
         if (action === "search_partners") {
             const query = body.query || "";
             const domain = query ? [["name", "ilike", query]] : [];
@@ -157,7 +192,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ partners: result || [] });
         }
 
-        // AÇÃO: Criar Novo Parceiro
+        // AÇÃO: CRIAR PARCEIRO
         if (action === "create_partner") {
             const { name, email, phone } = body;
             if (!name || !name.trim()) {
@@ -174,7 +209,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, id: newPartnerId, name: name.trim() });
         }
 
-        // AÇÃO: Buscar Estoque
+        // AÇÃO: BUSCAR ESTOQUE
         if (action === "get_stock") {
             const query = body.query || "";
             const domain = [["quantity", ">", 0]];
@@ -187,7 +222,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: result || [] });
         }
 
-        // AÇÃO: Buscar Faturas de Vendas
+        // AÇÃO: BUSCAR FATURAS DE VENDAS
         if (action === "get_sales") {
             const query = body.query || "";
             const domain = [["move_type", "=", "out_invoice"]];
@@ -196,18 +231,18 @@ export default async function handler(req, res) {
             }
 
             const result = await execute("account.move", "search_read", [domain], {
-                fields: ["id", "name", "partner_id", "amount_total", "state"],
+                fields: ["id", "name", "partner_id", "amount_total", "state", "payment_state"],
                 order: "id desc",
                 limit: 100
             });
             return res.status(200).json({ result: result || [] });
         }
 
-        // AÇÃO: Detalhes de uma Fatura
+        // AÇÃO: DETALHES DE UMA FATURA
         if (action === "get_sale_detail") {
             const { order_id } = body;
             const invoices = await execute("account.move", "search_read", [[["id", "=", order_id]]], {
-                fields: ["id", "name", "partner_id", "invoice_payment_term_id", "invoice_line_ids", "state"]
+                fields: ["id", "name", "partner_id", "invoice_payment_term_id", "invoice_line_ids", "state", "payment_state", "amount_total"]
             });
             if (!invoices || invoices.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
 
@@ -222,7 +257,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Atualizar / Adicionar Linhas na Fatura
+        // AÇÃO: ATUALIZAR LINHAS DA FATURA
         if (action === "update_sale") {
             const { order_id, partner_id, payment_term_id, lines, post_invoice } = body;
             
@@ -259,7 +294,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: Alterar Status
+        // AÇÃO: ALTERAR STATUS
         if (action === "toggle_lock_sale") {
             const { order_id, lock } = body;
             if (!lock) {
@@ -270,7 +305,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO PADRÃO / BUSCAR PRODUTOS
+        // AÇÃO PADRÃO: PRODUTOS
         const query = body.query || "";
         const domain = query ? [["name", "ilike", query]] : [];
         const result = await execute("product.template", "search_read", [domain], {
