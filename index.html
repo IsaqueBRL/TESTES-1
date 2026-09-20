@@ -59,7 +59,7 @@
         .status-draft { background-color: #fff3e0; color: var(--warning-color); }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
-        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; position: relative; }
         .modal h2 { color: var(--primary-color); font-size: 18px; }
         .modal label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: -8px; }
         .modal input, .modal select { padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; outline: none; background: #fff; width: 100%; }
@@ -75,10 +75,25 @@
         .btn-add-line:hover { color: #005658; }
         .btn-remove-line { background: none; border: none; color: var(--danger-color); font-weight: bold; cursor: pointer; font-size: 16px; }
 
+        /* Selo PAGO no estilo Odoo */
+        .ribbon-pago {
+            position: absolute;
+            top: 18px;
+            right: -30px;
+            background-color: #28a745;
+            color: white;
+            font-weight: 800;
+            font-size: 12px;
+            padding: 4px 35px;
+            transform: rotate(45deg);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            letter-spacing: 1px;
+            z-index: 10;
+        }
+
         .view-section { display: none; }
         .active-section { display: block !important; }
 
-        /* Estilo Autocomplete Parceiros */
         .partner-search-container { position: relative; width: 100%; }
         .partner-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 200px; overflow-y: auto; z-index: 1100; display: none; }
         .partner-dropdown-item { padding: 10px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
@@ -190,6 +205,7 @@
                         <th>CLIENTE</th>
                         <th>STATUS</th>
                         <th>VALOR TOTAL</th>
+                        <th style="text-align: center;">PAGAMENTO</th>
                     </tr>
                 </thead>
                 <tbody id="resultsVendas"></tbody>
@@ -269,9 +285,33 @@
     </div>
 </div>
 
+<!-- Modal: Registrar Pagamento -->
+<div class="modal-overlay" id="paymentModal" style="z-index: 1100;">
+    <div class="modal" style="max-width: 420px;">
+        <h2>Pagar Fatura</h2>
+        
+        <label>Conta</label>
+        <select id="payJournalSelect"></select>
+
+        <label>Valor</label>
+        <input type="number" id="payAmountInput" step="0.01">
+
+        <label>Data de Pagamento</label>
+        <input type="date" id="payDateInput">
+
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="fecharModalPagamento()">Descartar</button>
+            <button class="btn-save" id="btnConfirmPay" onclick="confirmarPagamentoOdoo()">Criar pagamento</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Detalhes / Editar Fatura -->
 <div class="modal-overlay" id="saleModal">
     <div class="modal" style="max-width: 750px;">
+        <!-- Selo PAGO na fatura -->
+        <div id="ribbonPagoBadge" class="ribbon-pago" style="display: none;">PAGO</div>
+
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <h2 id="saleModalTitle">Fatura</h2>
             <span id="saleStatusBadge" class="status-badge"></span>
@@ -321,6 +361,7 @@
     let timer = null;
     let partnerSearchTimer = null;
     let currentOrderId = null;
+    let currentOrderTotal = 0;
     let availableProducts = [];
     let isCurrentInvoiceEditable = false;
 
@@ -513,7 +554,7 @@
 
             if (!data.result || data.result.length === 0) {
                 status.innerText = "Nenhuma fatura encontrada.";
-                results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #888;">Nenhuma fatura encontrada</td></tr>`;
+                results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #888;">Nenhuma fatura encontrada</td></tr>`;
                 return;
             }
 
@@ -525,6 +566,7 @@
                 const orderNum = sale.name || "-";
                 const total = sale.amount_total ?? 0;
                 const isPosted = sale.state === 'posted';
+                const isPaid = sale.payment_state === 'paid' || sale.payment_state === 'in_payment';
 
                 results.innerHTML += `
                     <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
@@ -536,12 +578,17 @@
                             </span>
                         </td>
                         <td class="price-col">R$ ${total.toFixed(2)}</td>
+                        <td style="text-align: center;">
+                            <span class="status-badge ${isPaid ? 'status-sale' : 'status-draft'}">
+                                ${isPaid ? 'Pago' : 'Não Pago'}
+                            </span>
+                        </td>
                     </tr>
                 `;
             });
         } catch (e) {
             status.innerText = "Erro ao carregar faturas.";
-            results.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+            results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
 
@@ -613,7 +660,7 @@
         }
     }
 
-    /* 6. DETALHES DA FATURA E PARCEIROS */
+    /* 6. DETALHES DA FATURA E PAGAMENTO */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
         try {
@@ -627,6 +674,7 @@
             if (data.error) return alert(data.error);
 
             const invoice = data.order;
+            currentOrderTotal = invoice.amount_total ?? 0;
             availableProducts = data.products || [];
 
             document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name || 'Nova'}`;
@@ -638,7 +686,11 @@
             document.getElementById('saleCustomerInput').value = currentPartnerName || "";
 
             const isPosted = invoice.state === 'posted';
+            const isPaid = invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment';
             isCurrentInvoiceEditable = !isPosted;
+
+            // Selo visual PAGO
+            document.getElementById('ribbonPagoBadge').style.display = isPaid ? 'block' : 'none';
 
             const statusBadge = document.getElementById('saleStatusBadge');
             statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
@@ -656,11 +708,87 @@
             document.getElementById('btnAddLine').style.display = isCurrentInvoiceEditable ? 'inline-block' : 'none';
 
             renderLines(data.lines || [], isCurrentInvoiceEditable);
-            atualizarBotoesAcao(isPosted, invoice.name);
+            atualizarBotoesAcao(isPosted, isPaid, invoice.name);
 
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
             alert('Erro ao carregar detalhes da fatura.');
+        }
+    }
+
+    async function abrirModalPagamento() {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_payment_journals' })
+            });
+
+            const data = await res.json();
+            const selectJournal = document.getElementById('payJournalSelect');
+            selectJournal.innerHTML = '';
+
+            if (data.result && data.result.length > 0) {
+                data.result.forEach(j => {
+                    selectJournal.innerHTML += `<option value="${j.id}">${j.name}</option>`;
+                });
+            } else {
+                selectJournal.innerHTML = '<option value="">Nenhuma conta/diário disponível</option>';
+            }
+
+            document.getElementById('payAmountInput').value = currentOrderTotal;
+            document.getElementById('payDateInput').value = new Date().toISOString().split('T')[0];
+            document.getElementById('paymentModal').style.display = 'flex';
+        } catch (e) {
+            alert('Erro ao carregar diários/contas de pagamento.');
+        }
+    }
+
+    function fecharModalPagamento() {
+        document.getElementById('paymentModal').style.display = 'none';
+    }
+
+    async function confirmarPagamentoOdoo() {
+        const journal_id = document.getElementById('payJournalSelect').value;
+        const amount = document.getElementById('payAmountInput').value;
+        const payment_date = document.getElementById('payDateInput').value;
+        const btn = document.getElementById('btnConfirmPay');
+
+        if (!journal_id || !amount) {
+            return alert("Por favor preencha todos os campos.");
+        }
+
+        btn.innerText = "Processando...";
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'register_payment',
+                    order_id: currentOrderId,
+                    journal_id,
+                    amount,
+                    payment_date
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                alert('Pagamento registrado com sucesso!');
+                fecharModalPagamento();
+                abrirDetalhesVenda(currentOrderId);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao registrar pagamento.');
+            }
+        } catch (e) {
+            alert('Erro ao conectar com a API do Odoo.');
+        } finally {
+            btn.innerText = "Criar pagamento";
+            btn.disabled = false;
         }
     }
 
@@ -842,13 +970,16 @@
         document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
     }
 
-    function atualizarBotoesAcao(isPosted, invoiceName) {
+    function atualizarBotoesAcao(isPosted, isPaid, invoiceName) {
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
         const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
 
         if (isPosted) {
+            if (!isPaid) {
+                container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalPagamento()">Pagar</button>`;
+            }
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
         } else {
             if (semNumero) {
@@ -906,7 +1037,7 @@
             statusBadge.innerText = 'Provisório';
             statusBadge.className = 'status-badge status-draft';
 
-            atualizarBotoesAcao(false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
+            atualizarBotoesAcao(false, false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
             alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Salvar ou Lançar.');
         } catch (e) {
             alert('Erro ao alterar status para Provisório.');
