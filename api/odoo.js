@@ -254,6 +254,16 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
+        // AÇÃO: CANCELAR FATURA
+        if (action === "cancel_sale") {
+            const { order_id } = body;
+            if (!order_id) {
+                return res.status(400).json({ error: "ID da fatura é obrigatório." });
+            }
+            await execute("account.move", "button_cancel", [[Number(order_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
         // AÇÃO: BUSCAR PARCEIROS
         if (action === "search_partners") {
             const query = body.query || "";
