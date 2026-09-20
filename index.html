@@ -14,6 +14,7 @@
             --border-color: #e0e0e0;
             --success-color: #2e7d32;
             --danger-color: #c62828;
+            --danger-hover: #b71c1c;
             --edit-color: #1976d2;
             --warning-color: #f57c00;
         }
@@ -65,6 +66,8 @@
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .btn-cancel { background-color: #777; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-save { background-color: var(--primary-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn-delete { background-color: var(--danger-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn-delete:hover { background-color: var(--danger-hover); }
 
         .view-section { display: none; }
         .active-section { display: block !important; }
@@ -486,7 +489,7 @@
             selectTerm.disabled = !editavel;
 
             renderLines(data.lines || [], editavel);
-            atualizarBotoesAcao(isPosted);
+            atualizarBotoesAcao(isPosted, invoice.name);
 
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
@@ -631,14 +634,49 @@
         document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
     }
 
-    function atualizarBotoesAcao(isPosted) {
+    function atualizarBotoesAcao(isPosted, invoiceName) {
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
+
+        // A fatura é considerada sem número quando não tiver nome ou for "/" ou "-"
+        const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
 
         if (isPosted) {
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
         } else {
+            // Só exibe o botão de excluir se a fatura estiver em Provisório E não tiver número de fatura
+            if (semNumero) {
+                container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
+            }
             container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar</button>`;
+        }
+    }
+
+    async function excluirFatura() {
+        if (!currentOrderId) return;
+
+        if (!confirm("Tem certeza que deseja excluir esta fatura provisória? Esta ação não poderá ser desfeita.")) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_sale', order_id: currentOrderId })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                alert('Fatura excluída com sucesso!');
+                fecharSaleModal();
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao excluir a fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao tentar excluir a fatura.');
         }
     }
 
@@ -659,7 +697,8 @@
             statusBadge.innerText = 'Provisório';
             statusBadge.className = 'status-badge status-draft';
 
-            atualizarBotoesAcao(false);
+            // Atualiza os botões passando false (provisório)
+            atualizarBotoesAcao(false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
             alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Confirmar.');
         } catch (e) {
             alert('Erro ao alterar status para Provisório.');
