@@ -141,9 +141,9 @@ export default async function handler(req, res) {
             return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
 
-        // AÇÃO: Atualizar / Adicionar Linhas na Fatura
+        // AÇÃO: Atualizar / Adicionar Linhas na Fatura (Com opção de apenas salvar ou lançar)
         if (action === "update_sale") {
-            const { order_id, partner_id, payment_term_id, lines } = body;
+            const { order_id, partner_id, payment_term_id, lines, post_invoice } = body;
             
             const writeData = {
                 invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false
@@ -173,7 +173,11 @@ export default async function handler(req, res) {
                 }
             }
 
-            await execute("account.move", "action_post", [[Number(order_id)]]);
+            // Apenas lança a fatura se explicitamente solicitado
+            if (post_invoice) {
+                await execute("account.move", "action_post", [[Number(order_id)]]);
+            }
+
             return res.status(200).json({ success: true });
         }
 
