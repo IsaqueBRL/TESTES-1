@@ -55,6 +55,16 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, id: newInvoiceId });
         }
 
+        // AÇÃO: Excluir Fatura (somente faturas rascunho/provisórias sem número)
+        if (action === "delete_sale") {
+            const { order_id } = body;
+            if (!order_id) {
+                return res.status(400).json({ error: "ID da fatura é obrigatório." });
+            }
+            await execute("account.move", "unlink", [[Number(order_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
         // AÇÃO: Buscar Parceiros (Clientes)
         if (action === "search_partners") {
             const query = body.query || "";
