@@ -100,6 +100,14 @@
         .partner-dropdown-item:hover { background-color: #f4f6f9; }
         .partner-create-item { font-weight: bold; color: var(--primary-color); background-color: #fdf8fc; }
         .partner-create-item:hover { background-color: #f7eaf4; }
+
+        .payment-list-item {
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background-color: #fafafa;
+        }
     </style>
 </head>
 <body>
@@ -302,6 +310,19 @@
         <div class="modal-actions">
             <button class="btn-cancel" onclick="fecharModalPagamento()">Descartar</button>
             <button class="btn-save" id="btnConfirmPay" onclick="confirmarPagamentoOdoo()">Criar pagamento</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Lista de Pagamentos / Alterações do Pagamento -->
+<div class="modal-overlay" id="paymentsListModal" style="z-index: 1150;">
+    <div class="modal" style="max-width: 520px;">
+        <h2>Pagamentos Registrados</h2>
+        <div id="paymentsContainer" style="margin-top: 10px;">
+            <p style="text-align: center; color: #666;">Carregando pagamentos...</p>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="fecharModalListaPagamentos()">Fechar</button>
         </div>
     </div>
 </div>
@@ -748,6 +769,111 @@
         document.getElementById('paymentModal').style.display = 'none';
     }
 
+    async function abrirModalPagamentosEntrada() {
+        const container = document.getElementById('paymentsContainer');
+        container.innerHTML = `<p style="text-align: center; color: #666;">Carregando pagamentos...</p>`;
+        document.getElementById('paymentsListModal').style.display = 'flex';
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_invoice_payments', order_id: currentOrderId })
+            });
+
+            const data = await res.json();
+            if (!data.payments || data.payments.length === 0) {
+                container.innerHTML = `<p style="text-align: center; color: #666;">Nenhum pagamento encontrado para esta fatura.</p>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            data.payments.forEach(p => {
+                const isDraft = p.state === 'draft';
+                const journalName = Array.isArray(p.journal_id) ? p.journal_id[1] : '-';
+                
+                let actionsHtml = '';
+                if (!isDraft) {
+                    actionsHtml = `<button class="btn-action" style="background-color: var(--warning-color); padding: 6px 12px; font-size: 13px;" onclick="voltarPagamentoProvisorio(${p.id})">Editar (Voltar para Provisório)</button>`;
+                } else {
+                    actionsHtml = `<button class="btn-delete" style="padding: 6px 12px; font-size: 13px;" onclick="excluirPagamentoProvisorio(${p.id})">Excluir Pagamento</button>`;
+                }
+
+                container.innerHTML += `
+                    <div class="payment-list-item">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong>${p.name || 'Pagamento'}</strong>
+                            <span class="status-badge ${isDraft ? 'status-draft' : 'status-sale'}">
+                                ${isDraft ? 'Provisório' : 'Pago'}
+                            </span>
+                        </div>
+                        <div style="font-size: 13px; color: #555; margin-bottom: 10px;">
+                            <div><strong>Valor:</strong> R$ ${(p.amount || 0).toFixed(2)}</div>
+                            <div><strong>Diário/Conta:</strong> ${journalName}</div>
+                            <div><strong>Data:</strong> ${p.date || '-'}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            ${actionsHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+        } catch (e) {
+            container.innerHTML = `<p style="text-align: center; color: red;">Erro ao buscar pagamentos.</p>`;
+        }
+    }
+
+    function fecharModalListaPagamentos() {
+        document.getElementById('paymentsListModal').style.display = 'none';
+    }
+
+    async function voltarPagamentoProvisorio(paymentId) {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'unpost_payment', payment_id: paymentId })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert('Pagamento alterado para Provisório!');
+                abrirModalPagamentosEntrada();
+                abrirDetalhesVenda(currentOrderId);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao alterar o pagamento.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao alterar o pagamento.');
+        }
+    }
+
+    async function excluirPagamentoProvisorio(paymentId) {
+        if (!confirm("Tem certeza que deseja excluir este pagamento em Provisório?")) return;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_payment', payment_id: paymentId })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert('Pagamento excluído com sucesso!');
+                abrirModalPagamentosEntrada();
+                abrirDetalhesVenda(currentOrderId);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao excluir o pagamento.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao excluir o pagamento.');
+        }
+    }
+
     async function confirmarPagamentoOdoo() {
         const journal_id = document.getElementById('payJournalSelect').value;
         const amount = document.getElementById('payAmountInput').value;
@@ -977,7 +1103,9 @@
         const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
 
         if (isPosted) {
-            if (!isPaid) {
+            if (isPaid) {
+                container.innerHTML += `<button class="btn-action" style="background-color: var(--edit-color);" onclick="abrirModalPagamentosEntrada()">Pagamentos</button>`;
+            } else {
                 container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalPagamento()">Pagar</button>`;
             }
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
