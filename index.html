@@ -713,7 +713,6 @@
             if (semNumero) {
                 container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
             }
-            // Nome do botão alterado de "Confirmar" para "Lançar"
             container.innerHTML += `<button class="btn-save" onclick="salvarELancarPedido()">Lançar</button>`;
         }
     }
@@ -805,7 +804,7 @@
             const data = await res.json();
             if (data.success) {
                 alert('Alterações salvas no Odoo com sucesso (Status permanece Provisório)!');
-                abrirDetalhesVenda(currentOrderId); // Recarrega os detalhes da fatura
+                abrirDetalhesVenda(currentOrderId);
                 buscarVendas();
             } else {
                 alert(data.error || 'Erro ao salvar alterações na fatura.');
