@@ -102,6 +102,29 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
+        // AÇÃO: LANÇAR / CONFIRMAR PAGAMENTO NO ODOO
+        if (action === "post_payment") {
+            const { payment_id } = body;
+            if (!payment_id) return res.status(400).json({ error: "ID do pagamento é obrigatório." });
+
+            await execute("account.payment", "action_post", [[Number(payment_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: ATUALIZAR PAGAMENTO
+        if (action === "update_payment") {
+            const { payment_id, journal_id, amount, date } = body;
+            if (!payment_id) return res.status(400).json({ error: "ID do pagamento é obrigatório." });
+
+            const writeData = {};
+            if (journal_id) writeData.journal_id = Number(journal_id);
+            if (amount !== undefined) writeData.amount = Number(amount);
+            if (date) writeData.date = date;
+
+            await execute("account.payment", "write", [[Number(payment_id)], writeData]);
+            return res.status(200).json({ success: true });
+        }
+
         // AÇÃO: EXCLUIR PAGAMENTO (APENAS SE ESTIVER EM PROVISÓRIO)
         if (action === "delete_payment") {
             const { payment_id } = body;
