@@ -69,6 +69,10 @@
         .btn-delete { background-color: var(--danger-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-delete:hover { background-color: var(--danger-hover); }
 
+        .btn-add-line { display: inline-block; background: none; border: none; color: #00878a; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 8px; text-decoration: underline; }
+        .btn-add-line:hover { color: #005658; }
+        .btn-remove-line { background: none; border: none; color: var(--danger-color); font-weight: bold; cursor: pointer; font-size: 16px; }
+
         .view-section { display: none; }
         .active-section { display: block !important; }
 
@@ -242,11 +246,14 @@
                         <th style="width: 90px;">QTD</th>
                         <th style="width: 110px;">PREÇO UNIT.</th>
                         <th>TOTAL</th>
+                        <th style="width: 40px;"></th>
                     </tr>
                 </thead>
                 <tbody id="saleLinesBody"></tbody>
             </table>
         </div>
+
+        <button id="btnAddLine" class="btn-add-line" onclick="adicionarLinhaProduto()">Adicionar uma linha</button>
 
         <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
             Valor Total: <span id="saleTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
@@ -261,6 +268,7 @@
     let partnerSearchTimer = null;
     let currentOrderId = null;
     let availableProducts = [];
+    let isCurrentInvoiceEditable = false;
 
     function mostrarTela(idTela) {
         document.getElementById('homeSection').style.display = 'none';
@@ -473,6 +481,8 @@
             document.getElementById('saleCustomerInput').value = currentPartnerName || "";
 
             const isPosted = invoice.state === 'posted';
+            isCurrentInvoiceEditable = !isPosted;
+
             const statusBadge = document.getElementById('saleStatusBadge');
             statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
             statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
@@ -484,11 +494,11 @@
                 selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
             });
 
-            const editavel = !isPosted;
-            document.getElementById('saleCustomerInput').disabled = !editavel;
-            selectTerm.disabled = !editavel;
+            document.getElementById('saleCustomerInput').disabled = !isCurrentInvoiceEditable;
+            selectTerm.disabled = !isCurrentInvoiceEditable;
+            document.getElementById('btnAddLine').style.display = isCurrentInvoiceEditable ? 'inline-block' : 'none';
 
-            renderLines(data.lines || [], editavel);
+            renderLines(data.lines || [], isCurrentInvoiceEditable);
             atualizarBotoesAcao(isPosted, invoice.name);
 
             document.getElementById('saleModal').style.display = 'flex';
@@ -611,13 +621,54 @@
 
             tbody.innerHTML += `
                 <tr class="line-row" data-line-id="${line.id || ''}">
-                    <td><select class="line-product" ${editavel ? '' : 'disabled'} onchange="recalcularTotais()">${options}</select></td>
+                    <td><select class="line-product" ${editavel ? '' : 'disabled'} onchange="aoSelecionarProduto(this)">${options}</select></td>
                     <td><input type="number" class="line-qty" value="${line.quantity || 1}" step="1" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
                     <td><input type="number" class="line-price" value="${line.price_unit || 0}" step="0.01" ${editavel ? '' : 'readonly'} oninput="recalcularTotais()"></td>
                     <td class="line-subtotal" style="font-weight:bold;">R$ ${(line.price_subtotal || 0).toFixed(2)}</td>
+                    <td>${editavel ? `<button class="btn-remove-line" onclick="removerLinha(this)">×</button>` : ''}</td>
                 </tr>
             `;
         });
+        recalcularTotais();
+    }
+
+    function adicionarLinhaProduto() {
+        if (!isCurrentInvoiceEditable) return;
+        const tbody = document.getElementById('saleLinesBody');
+        
+        let options = `<option value="">Selecione um produto...</option>` + availableProducts.map(p => 
+            `<option value="${p.id}">${p.display_name}</option>`
+        ).join('');
+
+        const tr = document.createElement('tr');
+        tr.className = 'line-row';
+        tr.setAttribute('data-line-id', '');
+        tr.innerHTML = `
+            <td><select class="line-product" onchange="aoSelecionarProduto(this)">${options}</select></td>
+            <td><input type="number" class="line-qty" value="1" step="1" oninput="recalcularTotais()"></td>
+            <td><input type="number" class="line-price" value="0.00" step="0.01" oninput="recalcularTotais()"></td>
+            <td class="line-subtotal" style="font-weight:bold;">R$ 0.00</td>
+            <td><button class="btn-remove-line" onclick="removerLinha(this)">×</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    function aoSelecionarProduto(selectElem) {
+        const prodId = Number(selectElem.value);
+        const row = selectElem.closest('.line-row');
+        const priceInput = row.querySelector('.line-price');
+
+        if (prodId) {
+            const product = availableProducts.find(p => p.id === prodId);
+            if (product && product.list_price) {
+                priceInput.value = product.list_price;
+            }
+        }
+        recalcularTotais();
+    }
+
+    function removerLinha(btn) {
+        btn.closest('.line-row').remove();
         recalcularTotais();
     }
 
@@ -638,13 +689,11 @@
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
-        // A fatura é considerada sem número quando não tiver nome ou for "/" ou "-"
         const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
 
         if (isPosted) {
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
         } else {
-            // Só exibe o botão de excluir se a fatura estiver em Provisório E não tiver número de fatura
             if (semNumero) {
                 container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
             }
@@ -688,8 +737,10 @@
                 body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: false })
             });
 
+            isCurrentInvoiceEditable = true;
             document.getElementById('saleCustomerInput').disabled = false;
             document.getElementById('salePaymentTerm').disabled = false;
+            document.getElementById('btnAddLine').style.display = 'inline-block';
             document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
             document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
 
@@ -697,7 +748,6 @@
             statusBadge.innerText = 'Provisório';
             statusBadge.className = 'status-badge status-draft';
 
-            // Atualiza os botões passando false (provisório)
             atualizarBotoesAcao(false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
             alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Confirmar.');
         } catch (e) {
@@ -708,12 +758,15 @@
     async function salvarEBloquearPedido() {
         const linesData = [];
         document.querySelectorAll('.line-row').forEach(row => {
-            linesData.push({
-                id: row.getAttribute('data-line-id') || null,
-                product_id: row.querySelector('.line-product').value,
-                qty: row.querySelector('.line-qty').value,
-                price: row.querySelector('.line-price').value
-            });
+            const prodVal = row.querySelector('.line-product').value;
+            if (prodVal) {
+                linesData.push({
+                    id: row.getAttribute('data-line-id') || null,
+                    product_id: prodVal,
+                    qty: row.querySelector('.line-qty').value,
+                    price: row.querySelector('.line-price').value
+                });
+            }
         });
 
         try {
