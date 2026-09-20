@@ -69,6 +69,11 @@
         .btn-delete { background-color: var(--danger-color); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn-delete:hover { background-color: var(--danger-hover); }
 
+        /* Estilo Botão Nuvem Salvar (Estilo Odoo) */
+        .btn-cloud-save { background-color: transparent; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--primary-color); transition: background-color 0.2s; }
+        .btn-cloud-save:hover { background-color: #f0eaf0; }
+        .btn-cloud-save svg { width: 18px; height: 18px; fill: currentColor; }
+
         .btn-add-line { display: inline-block; background: none; border: none; color: #00878a; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 8px; text-decoration: underline; }
         .btn-add-line:hover { color: #005658; }
         .btn-remove-line { background: none; border: none; color: var(--danger-color); font-weight: bold; cursor: pointer; font-size: 16px; }
@@ -219,7 +224,15 @@
 <div class="modal-overlay" id="saleModal">
     <div class="modal" style="max-width: 750px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2 id="saleModalTitle">Fatura</h2>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 id="saleModalTitle">Fatura</h2>
+                <!-- Botão Salvar (Nuvem com Seta) -->
+                <button id="btnCloudSave" class="btn-cloud-save" onclick="salvarApenasProvisorio()" title="Salvar alterações">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                </button>
+            </div>
             <span id="saleStatusBadge" class="status-badge"></span>
         </div>
         
@@ -487,6 +500,9 @@
             statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
             statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
 
+            // Exibir o botão da nuvem apenas se o status for Provisório
+            document.getElementById('btnCloudSave').style.display = isCurrentInvoiceEditable ? 'inline-flex' : 'none';
+
             const selectTerm = document.getElementById('salePaymentTerm');
             selectTerm.innerHTML = '<option value="">Selecione...</option>';
             (data.payment_terms || []).forEach(term => {
@@ -697,7 +713,8 @@
             if (semNumero) {
                 container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
             }
-            container.innerHTML += `<button class="btn-save" onclick="salvarEBloquearPedido()">Confirmar</button>`;
+            // Nome do botão alterado de "Confirmar" para "Lançar"
+            container.innerHTML += `<button class="btn-save" onclick="salvarELancarPedido()">Lançar</button>`;
         }
     }
 
@@ -741,6 +758,7 @@
             document.getElementById('saleCustomerInput').disabled = false;
             document.getElementById('salePaymentTerm').disabled = false;
             document.getElementById('btnAddLine').style.display = 'inline-block';
+            document.getElementById('btnCloudSave').style.display = 'inline-flex';
             document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
             document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
 
@@ -749,13 +767,56 @@
             statusBadge.className = 'status-badge status-draft';
 
             atualizarBotoesAcao(false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
-            alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Confirmar.');
+            alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Salvar ou Lançar.');
         } catch (e) {
             alert('Erro ao alterar status para Provisório.');
         }
     }
 
-    async function salvarEBloquearPedido() {
+    // Função acionada ao clicar na Nuvem de Salvar (Apenas salva em Provisório)
+    async function salvarApenasProvisorio() {
+        const linesData = [];
+        document.querySelectorAll('.line-row').forEach(row => {
+            const prodVal = row.querySelector('.line-product').value;
+            if (prodVal) {
+                linesData.push({
+                    id: row.getAttribute('data-line-id') || null,
+                    product_id: prodVal,
+                    qty: row.querySelector('.line-qty').value,
+                    price: row.querySelector('.line-price').value
+                });
+            }
+        });
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_sale',
+                    order_id: currentOrderId,
+                    partner_id: document.getElementById('saleCustomerId').value,
+                    payment_term_id: document.getElementById('salePaymentTerm').value,
+                    lines: linesData,
+                    post_invoice: false // Não altera para Lançado
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert('Alterações salvas no Odoo com sucesso (Status permanece Provisório)!');
+                abrirDetalhesVenda(currentOrderId); // Recarrega os detalhes da fatura
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao salvar alterações na fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao salvar fatura.');
+        }
+    }
+
+    // Função acionada ao clicar em "Lançar" (Salva e muda para Lançado)
+    async function salvarELancarPedido() {
         const linesData = [];
         document.querySelectorAll('.line-row').forEach(row => {
             const prodVal = row.querySelector('.line-product').value;
@@ -778,15 +839,16 @@
                     order_id: currentOrderId,
                     partner_id: document.getElementById('saleCustomerId').value,
                     payment_term_id: document.getElementById('salePaymentTerm').value,
-                    lines: linesData
+                    lines: linesData,
+                    post_invoice: true // Transforma em Lançado
                 })
             });
 
             fecharSaleModal();
-            alert('Fatura confirmada e alterada para Lançado com sucesso!');
+            alert('Fatura confirmada e lançada com sucesso!');
             buscarVendas();
         } catch (e) {
-            alert('Erro ao confirmar fatura.');
+            alert('Erro ao lançar fatura.');
         }
     }
 
