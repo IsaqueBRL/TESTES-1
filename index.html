@@ -312,27 +312,28 @@
         <div class="top-nav">
             <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
             <div style="display: flex; align-items: center; gap: 15px;">
-                <h2>Faturas de Vendas</h2>
-                <button class="btn-action" onclick="criarNovaVenda()">+ Nova Venda</button>
+                <h2>Pedidos de Vendas</h2>
+                <button class="btn-action" onclick="abrirNovoPedido()">+ Novo Pedido</button>
             </div>
         </div>
 
         <div class="search-box">
-            <input type="text" id="searchVendasInput" placeholder="Digite o número da fatura ou cliente..." oninput="debounceSearch('vendas')">
+            <input type="text" id="searchVendasInput" placeholder="Digite o número do pedido ou cliente..." oninput="debounceSearch('vendas')">
             <button onclick="buscarVendas()">Pesquisar</button>
         </div>
 
-        <div id="statusVendas" class="status">Carregando vendas...</div>
+        <div id="statusVendas" class="status">Carregando pedidos...</div>
 
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
-                        <th>NÚMERO DA FATURA</th>
+                        <th>NÚMERO DO PEDIDO</th>
                         <th>CLIENTE</th>
+                        <th>LOCAL/ARMAZÉM</th>
                         <th>STATUS</th>
                         <th>VALOR TOTAL</th>
-                        <th style="text-align: center;">PAGAMENTO</th>
+                        <th style="text-align: center;">FATURAMENTO</th>
                     </tr>
                 </thead>
                 <tbody id="resultsVendas"></tbody>
@@ -452,24 +453,28 @@
         <div id="ribbonPagoBadge" class="ribbon-pago" style="display: none;">PAGO</div>
 
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2 id="saleModalTitle">Fatura</h2>
+            <h2 id="saleModalTitle">Pedido de Venda</h2>
             <span id="saleStatusBadge" class="status-badge"></span>
         </div>
         
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 220px;" class="partner-search-container">
                 <label>Cliente</label>
-                <input type="text" id="saleCustomerInput" placeholder="Buscar ou criar cliente..." oninput="buscarParceiroOdoo(this.value)" autocomplete="off" disabled>
+                <input type="text" id="saleCustomerInput" placeholder="Buscar ou criar cliente..." oninput="buscarParceiroOdoo(this.value)" autocomplete="off">
                 <input type="hidden" id="saleCustomerId">
                 <div id="partnerDropdown" class="partner-dropdown"></div>
             </div>
             <div style="flex: 1; min-width: 180px;">
                 <label>Condição de Pagamento</label>
-                <select id="salePaymentTerm" disabled></select>
+                <select id="salePaymentTerm"></select>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <label>Local de Estoque (Armazém) *</label>
+                <select id="saleWarehouse"></select>
             </div>
         </div>
 
-        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas da Fatura</h3>
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Linhas do Pedido</h3>
         
         <div class="table-container">
             <table>
@@ -652,9 +657,12 @@
     let timer = null;
     let partnerSearchTimer = null;
     let currentOrderId = null;
+    let currentInvoiceId = null;
     let currentOrderTotal = 0;
     let availableProducts = [];
+    let availableWarehouses = [];
     let isCurrentInvoiceEditable = false;
+    let linesToRemove = [];
     let availableJournals = [];
     let currentTransferId = null;
     let availableLocations = [];
@@ -834,13 +842,32 @@
         }
     }
 
-    /* 3. BUSCAR VENDAS */
+    /* 3. BUSCAR PEDIDOS DE VENDAS */
+    function getOrderStatusMeta(state) {
+        switch (state) {
+            case 'draft': return { label: 'Orçamento', cls: 'status-draft' };
+            case 'sent': return { label: 'Orçamento Enviado', cls: 'status-draft' };
+            case 'sale': return { label: 'Confirmado', cls: 'status-sale' };
+            case 'done': return { label: 'Bloqueado', cls: 'status-sale' };
+            case 'cancel': return { label: 'Cancelada', cls: 'status-cancel' };
+            default: return { label: state || '-', cls: 'status-draft' };
+        }
+    }
+
+    function getPaymentSummaryMeta(summary) {
+        switch (summary) {
+            case 'pago': return { label: 'Pago', cls: 'status-sale' };
+            case 'nao_pago': return { label: 'Faturado - Não Pago', cls: 'status-draft' };
+            default: return { label: 'Não Faturado', cls: 'status-draft' };
+        }
+    }
+
     async function buscarVendas() {
         const query = document.getElementById("searchVendasInput").value.trim();
         const status = document.getElementById("statusVendas");
         const results = document.getElementById("resultsVendas");
 
-        status.innerText = "Pesquisando faturas...";
+        status.innerText = "Pesquisando pedidos...";
 
         try {
             const response = await fetch('/api/odoo', {
@@ -852,45 +879,44 @@
             const data = await response.json();
 
             if (!data.result || data.result.length === 0) {
-                status.innerText = "Nenhuma fatura encontrada.";
-                results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #888;">Nenhuma fatura encontrada</td></tr>`;
+                status.innerText = "Nenhum pedido encontrado.";
+                results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">Nenhum pedido encontrado</td></tr>`;
                 return;
             }
 
-            status.innerText = `${data.result.length} fatura(s) encontrada(s):`;
+            status.innerText = `${data.result.length} pedido(s) encontrado(s):`;
             results.innerHTML = "";
 
             data.result.forEach(sale => {
                 const clientName = Array.isArray(sale.partner_id) ? sale.partner_id[1] : "-";
+                const warehouseName = Array.isArray(sale.warehouse_id) ? sale.warehouse_id[1] : "-";
                 const orderNum = sale.name || "-";
                 const total = sale.amount_total ?? 0;
-                const isPosted = sale.state === 'posted';
-                const isCancelled = sale.state === 'cancel';
-                const isPaid = sale.payment_state === 'paid' || sale.payment_state === 'in_payment';
-                const statusClass = isCancelled ? 'status-cancel' : (isPosted ? 'status-sale' : 'status-draft');
-                const statusLabel = isCancelled ? 'Cancelada' : (isPosted ? 'Lançado' : 'Provisório');
+                const statusMeta = getOrderStatusMeta(sale.state);
+                const paymentMeta = getPaymentSummaryMeta(sale.payment_summary);
 
                 results.innerHTML += `
                     <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
                         <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
                         <td>${clientName}</td>
+                        <td>${warehouseName}</td>
                         <td>
-                            <span class="status-badge ${statusClass}">
-                                ${statusLabel}
+                            <span class="status-badge ${statusMeta.cls}">
+                                ${statusMeta.label}
                             </span>
                         </td>
                         <td class="price-col">R$ ${total.toFixed(2)}</td>
                         <td style="text-align: center;">
-                            <span class="status-badge ${isPaid ? 'status-sale' : 'status-draft'}">
-                                ${isPaid ? 'Pago' : 'Não Pago'}
+                            <span class="status-badge ${paymentMeta.cls}">
+                                ${paymentMeta.label}
                             </span>
                         </td>
                     </tr>
                 `;
             });
         } catch (e) {
-            status.innerText = "Erro ao carregar faturas.";
-            results.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
+            status.innerText = "Erro ao carregar pedidos.";
+            results.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Erro ao carregar dados</td></tr>`;
         }
     }
 
@@ -940,36 +966,60 @@
         }
     }
 
-    /* 5. CRIAR NOVA VENDA */
-    async function criarNovaVenda() {
+    /* 5. ABRIR NOVO PEDIDO DE VENDA (em branco, ainda não existe no Odoo) */
+    async function abrirNovoPedido() {
+        currentOrderId = null;
+        currentInvoiceId = null;
+        currentOrderTotal = 0;
+        linesToRemove = [];
+        availableProducts = [];
+
+        document.getElementById('saleModalTitle').innerText = 'Novo Pedido de Venda';
+        document.getElementById('ribbonPagoBadge').style.display = 'none';
+
+        const statusBadge = document.getElementById('saleStatusBadge');
+        statusBadge.innerText = 'Orçamento';
+        statusBadge.className = 'status-badge status-draft';
+
+        document.getElementById('saleCustomerId').value = '';
+        document.getElementById('saleCustomerInput').value = '';
+        document.getElementById('saleCustomerInput').disabled = false;
+
+        const selectTerm = document.getElementById('salePaymentTerm');
+        selectTerm.innerHTML = '<option value="">Selecione...</option>';
+        selectTerm.disabled = false;
+
         try {
-            const response = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "create_sale" })
+            const res = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'get_sale_form_data' }) });
+            const formData = await res.json();
+
+            (formData.payment_terms || []).forEach(term => {
+                selectTerm.innerHTML += `<option value="${term.id}">${term.name}</option>`;
             });
+            availableProducts = formData.products || [];
 
-            let data;
-            try {
-                data = await response.json();
-            } catch (parseErr) {
-                throw new Error(`Resposta inválida do servidor (status ${response.status}).`);
-            }
-
-            if (data.success && data.id) {
-                abrirDetalhesVenda(data.id);
-                buscarVendas();
-            } else {
-                alert(data.error || "Erro ao criar nova venda.");
-            }
+            availableWarehouses = formData.warehouses || [];
+            const selectWh = document.getElementById('saleWarehouse');
+            selectWh.innerHTML = '';
+            availableWarehouses.forEach((w, idx) => {
+                selectWh.innerHTML += `<option value="${w.id}" ${idx === 0 ? 'selected' : ''}>${w.name}</option>`;
+            });
+            selectWh.disabled = false;
         } catch (e) {
-            alert("Erro de conexão ao tentar criar nova venda: " + (e.message || 'erro desconhecido'));
+            // segue mesmo se a pré-carga falhar; os campos podem ser preenchidos/recarregados na hora de salvar
         }
+
+        document.getElementById('btnAddLine').style.display = 'inline-block';
+        renderLines([], true);
+        atualizarBotoesAcao({ state: 'draft', name: '' }, null);
+
+        document.getElementById('saleModal').style.display = 'flex';
     }
 
-    /* 6. DETALHES DA FATURA E PAGAMENTO */
+    /* 6. DETALHES DO PEDIDO E PAGAMENTO */
     async function abrirDetalhesVenda(orderId) {
         currentOrderId = orderId;
+        linesToRemove = [];
         try {
             const response = await fetch('/api/odoo', {
                 method: 'POST',
@@ -986,46 +1036,59 @@
 
             if (data.error) return alert(data.error);
 
-            const invoice = data.order;
-            currentOrderTotal = invoice.amount_total ?? 0;
+            const order = data.order;
+            currentOrderTotal = order.amount_total ?? 0;
             availableProducts = data.products || [];
+            availableWarehouses = data.warehouses || [];
 
-            document.getElementById('saleModalTitle').innerText = `Fatura ${invoice.name || 'Nova'}`;
+            const invoice = (data.invoices && data.invoices.length > 0) ? data.invoices[0] : null;
+            currentInvoiceId = invoice ? invoice.id : null;
+            if (invoice && invoice.amount_total) currentOrderTotal = invoice.amount_total;
+
+            document.getElementById('saleModalTitle').innerText = `Pedido ${order.name || 'Novo'}`;
             
-            const currentPartnerId = Array.isArray(invoice.partner_id) ? invoice.partner_id[0] : invoice.partner_id;
-            const currentPartnerName = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : "";
+            const currentPartnerId = Array.isArray(order.partner_id) ? order.partner_id[0] : order.partner_id;
+            const currentPartnerName = Array.isArray(order.partner_id) ? order.partner_id[1] : "";
             
             document.getElementById('saleCustomerId').value = currentPartnerId || "";
             document.getElementById('saleCustomerInput').value = currentPartnerName || "";
 
-            const isPosted = invoice.state === 'posted';
-            const isCancelled = invoice.state === 'cancel';
-            const isPaid = invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment';
-            isCurrentInvoiceEditable = invoice.state === 'draft';
+            const statusMeta = getOrderStatusMeta(order.state);
+            isCurrentInvoiceEditable = (order.state === 'draft' || order.state === 'sent');
+            const isPaid = !!invoice && (invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment');
 
             document.getElementById('ribbonPagoBadge').style.display = isPaid ? 'block' : 'none';
 
             const statusBadge = document.getElementById('saleStatusBadge');
-            statusBadge.innerText = isCancelled ? 'Cancelada' : (isPosted ? 'Lançado' : 'Provisório');
-            statusBadge.className = `status-badge ${isCancelled ? 'status-cancel' : (isPosted ? 'status-sale' : 'status-draft')}`;
+            statusBadge.innerText = statusMeta.label;
+            statusBadge.className = `status-badge ${statusMeta.cls}`;
 
             const selectTerm = document.getElementById('salePaymentTerm');
             selectTerm.innerHTML = '<option value="">Selecione...</option>';
             (data.payment_terms || []).forEach(term => {
-                const selected = (Array.isArray(invoice.invoice_payment_term_id) && invoice.invoice_payment_term_id[0] === term.id) ? 'selected' : '';
+                const selected = (Array.isArray(order.payment_term_id) && order.payment_term_id[0] === term.id) ? 'selected' : '';
                 selectTerm.innerHTML += `<option value="${term.id}" ${selected}>${term.name}</option>`;
+            });
+
+            const selectWh = document.getElementById('saleWarehouse');
+            selectWh.innerHTML = '';
+            const currentWhId = Array.isArray(order.warehouse_id) ? order.warehouse_id[0] : order.warehouse_id;
+            availableWarehouses.forEach(w => {
+                const selected = w.id === currentWhId ? 'selected' : '';
+                selectWh.innerHTML += `<option value="${w.id}" ${selected}>${w.name}</option>`;
             });
 
             document.getElementById('saleCustomerInput').disabled = !isCurrentInvoiceEditable;
             selectTerm.disabled = !isCurrentInvoiceEditable;
+            selectWh.disabled = !isCurrentInvoiceEditable;
             document.getElementById('btnAddLine').style.display = isCurrentInvoiceEditable ? 'inline-block' : 'none';
 
             renderLines(data.lines || [], isCurrentInvoiceEditable);
-            atualizarBotoesAcao(isPosted, isPaid, invoice.name, isCancelled);
+            atualizarBotoesAcao(order, invoice);
 
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
-            alert('Erro ao carregar detalhes da fatura: ' + (e.message || 'erro desconhecido'));
+            alert('Erro ao carregar detalhes do pedido: ' + (e.message || 'erro desconhecido'));
         }
     }
 
@@ -1085,7 +1148,7 @@
             const res = await fetch('/api/odoo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'get_invoice_payments', order_id: currentOrderId })
+                body: JSON.stringify({ action: 'get_invoice_payments', order_id: currentInvoiceId })
             });
 
             const data = await res.json();
@@ -1281,7 +1344,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action: 'register_payment',
-                    order_id: currentOrderId,
+                    order_id: currentInvoiceId,
                     journal_id,
                     amount,
                     payment_date
@@ -1467,7 +1530,10 @@
     }
 
     function removerLinha(btn) {
-        btn.closest('.line-row').remove();
+        const row = btn.closest('.line-row');
+        const lineId = row.getAttribute('data-line-id');
+        if (lineId) linesToRemove.push(lineId);
+        row.remove();
         recalcularTotais();
     }
 
@@ -1484,113 +1550,37 @@
         document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
     }
 
-    function atualizarBotoesAcao(isPosted, isPaid, invoiceName, isCancelled) {
+    function atualizarBotoesAcao(order, invoice) {
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
-        const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
+        const state = order.state;
+        const isPaid = !!invoice && (invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment');
 
-        if (isCancelled) {
-            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
-        } else if (isPosted) {
-            if (isPaid) {
-                container.innerHTML += `<button class="btn-action" style="background-color: var(--edit-color);" onclick="abrirModalPagamentosEntrada()">Pagamentos</button>`;
+        if (state === 'cancel') {
+            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="reabrirComoOrcamento()">Reabrir como Orçamento</button>`;
+        } else if (state === 'sale' || state === 'done') {
+            if (invoice) {
+                if (isPaid) {
+                    container.innerHTML += `<button class="btn-action" style="background-color: var(--edit-color);" onclick="abrirModalPagamentosEntrada()">Pagamentos</button>`;
+                } else {
+                    container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalPagamento()">Pagar</button>`;
+                }
             } else {
-                container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalPagamento()">Pagar</button>`;
+                container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="gerarFaturaPedido()">Gerar Fatura</button>`;
             }
-            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
+            container.innerHTML += `<button class="btn-delete" onclick="cancelarPedido()">Cancelar Pedido</button>`;
         } else {
-            if (semNumero) {
-                container.innerHTML += `<button class="btn-delete" onclick="excluirFatura()">Excluir</button>`;
-            } else {
-                container.innerHTML += `<button class="btn-delete" onclick="cancelarFaturaProvisoria()">Cancelar</button>`;
+            // draft / sent (orçamento, ainda editável)
+            if (currentOrderId) {
+                container.innerHTML += `<button class="btn-delete" onclick="excluirPedido()">Excluir</button>`;
             }
-            container.innerHTML += `<button class="btn-save" onclick="salvarApenasProvisorio()">Salvar</button>`;
-            container.innerHTML += `<button class="btn-action" onclick="salvarELancarPedido()">Lançar</button>`;
+            container.innerHTML += `<button class="btn-save" onclick="salvarOrcamento()">Salvar Orçamento</button>`;
+            container.innerHTML += `<button class="btn-action" onclick="confirmarELancarPedido()">Confirmar e Lançar Venda</button>`;
         }
     }
 
-    async function cancelarFaturaProvisoria() {
-        if (!currentOrderId) return;
-
-        const confirmado = await mostrarConfirmacao("Deseja realmente cancelar esta fatura provisória?");
-        if (!confirmado) return;
-
-        try {
-            const res = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'cancel_sale', order_id: currentOrderId })
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                alert('Fatura cancelada com sucesso!');
-                fecharSaleModal();
-                buscarVendas();
-            } else {
-                alert(data.error || 'Erro ao cancelar a fatura.');
-            }
-        } catch (e) {
-            alert('Erro de conexão ao tentar cancelar a fatura.');
-        }
-    }
-
-    async function excluirFatura() {
-        if (!currentOrderId) return;
-
-        const confirmado = await mostrarConfirmacao("Tem certeza que deseja excluir esta fatura provisória? Esta ação não poderá ser desfeita.");
-        if (!confirmado) return;
-
-        try {
-            const res = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'delete_sale', order_id: currentOrderId })
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                alert('Fatura excluída com sucesso!');
-                fecharSaleModal();
-                buscarVendas();
-            } else {
-                alert(data.error || 'Erro ao excluir a fatura.');
-            }
-        } catch (e) {
-            alert('Erro de conexão ao tentar excluir a fatura.');
-        }
-    }
-
-    async function destravarParaEdicao() {
-        try {
-            await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'toggle_lock_sale', order_id: currentOrderId, lock: false })
-            });
-
-            isCurrentInvoiceEditable = true;
-            document.getElementById('saleCustomerInput').disabled = false;
-            document.getElementById('salePaymentTerm').disabled = false;
-            document.getElementById('btnAddLine').style.display = 'inline-block';
-            document.querySelectorAll('.line-product').forEach(el => el.disabled = false);
-            document.querySelectorAll('.line-qty, .line-price').forEach(el => el.readOnly = false);
-
-            const statusBadge = document.getElementById('saleStatusBadge');
-            statusBadge.innerText = 'Provisório';
-            statusBadge.className = 'status-badge status-draft';
-
-            atualizarBotoesAcao(false, false, document.getElementById('saleModalTitle').innerText.replace('Fatura ', ''));
-            alert('Fatura retornou para o status Provisório! Edite o cliente, itens e clique em Salvar ou Lançar.');
-        } catch (e) {
-            alert('Erro ao alterar status para Provisório.');
-        }
-    }
-
-    async function salvarApenasProvisorio() {
+    function coletarLinhasDoFormulario() {
         const linesData = [];
         document.querySelectorAll('.line-row').forEach(row => {
             const prodVal = row.querySelector('.line-product').value;
@@ -1603,67 +1593,187 @@
                 });
             }
         });
+        return linesData;
+    }
+
+    function validarFormularioPedido() {
+        if (!document.getElementById('saleCustomerId').value) {
+            alert('Selecione um cliente para o pedido.');
+            return false;
+        }
+        if (!document.getElementById('saleWarehouse').value) {
+            alert('Selecione o local de estoque (armazém) de onde sairá o produto.');
+            return false;
+        }
+        if (coletarLinhasDoFormulario().length === 0) {
+            alert('Adicione ao menos um produto ao pedido.');
+            return false;
+        }
+        return true;
+    }
+
+    async function cancelarPedido() {
+        if (!currentOrderId) return;
+
+        const confirmado = await mostrarConfirmacao("Deseja realmente cancelar este pedido de venda?");
+        if (!confirmado) return;
 
         try {
             const res = await fetch('/api/odoo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'update_sale',
-                    order_id: currentOrderId,
-                    partner_id: document.getElementById('saleCustomerId').value,
-                    payment_term_id: document.getElementById('salePaymentTerm').value,
-                    lines: linesData,
-                    post_invoice: false
-                })
+                body: JSON.stringify({ action: 'cancel_sale_order', order_id: currentOrderId })
             });
 
             const data = await res.json();
+
             if (data.success) {
-                alert('Alterações salvas com sucesso!');
+                alert('Pedido cancelado com sucesso!');
+                fecharSaleModal();
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao cancelar o pedido.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao tentar cancelar o pedido.');
+        }
+    }
+
+    async function excluirPedido() {
+        if (!currentOrderId) return;
+
+        const confirmado = await mostrarConfirmacao("Tem certeza que deseja excluir este pedido? Esta ação não poderá ser desfeita.");
+        if (!confirmado) return;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_sale_order', order_id: currentOrderId })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                alert('Pedido excluído com sucesso!');
+                fecharSaleModal();
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao excluir o pedido.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao tentar excluir o pedido.');
+        }
+    }
+
+    async function reabrirComoOrcamento() {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'reopen_sale_order', order_id: currentOrderId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Pedido reaberto como Orçamento! Edite o cliente, o local de estoque e os itens, e depois Salve ou Confirme novamente.');
                 abrirDetalhesVenda(currentOrderId);
                 buscarVendas();
             } else {
-                alert(data.error || 'Erro ao salvar alterações na fatura.');
+                alert(data.error || 'Erro ao reabrir o pedido.');
             }
         } catch (e) {
-            alert('Erro de conexão ao salvar fatura.');
+            alert('Erro de conexão ao reabrir o pedido.');
         }
     }
 
-    async function salvarELancarPedido() {
-        const linesData = [];
-        document.querySelectorAll('.line-row').forEach(row => {
-            const prodVal = row.querySelector('.line-product').value;
-            if (prodVal) {
-                linesData.push({
-                    id: row.getAttribute('data-line-id') || null,
-                    product_id: prodVal,
-                    qty: row.querySelector('.line-qty').value,
-                    price: row.querySelector('.line-price').value
-                });
+    async function gerarFaturaPedido() {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'invoice_and_post_order', order_id: currentOrderId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Fatura gerada e lançada com sucesso!');
+                abrirDetalhesVenda(currentOrderId);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao gerar a fatura do pedido.');
             }
-        });
+        } catch (e) {
+            alert('Erro de conexão ao gerar a fatura do pedido.');
+        }
+    }
+
+    async function salvarOrcamento() {
+        if (!validarFormularioPedido()) return;
 
         try {
-            await fetch('/api/odoo', {
+            const res = await fetch('/api/odoo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    action: 'update_sale',
+                    action: 'save_sale_order',
                     order_id: currentOrderId,
                     partner_id: document.getElementById('saleCustomerId').value,
                     payment_term_id: document.getElementById('salePaymentTerm').value,
-                    lines: linesData,
-                    post_invoice: true
+                    warehouse_id: document.getElementById('saleWarehouse').value,
+                    lines: coletarLinhasDoFormulario(),
+                    removed_line_ids: linesToRemove,
+                    confirm: false
                 })
             });
 
+            const data = await res.json();
+            if (data.success) {
+                alert('Orçamento salvo com sucesso!');
+                abrirDetalhesVenda(data.id);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao salvar o orçamento.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao salvar o orçamento.');
+        }
+    }
+
+    async function confirmarELancarPedido() {
+        if (!validarFormularioPedido()) return;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'save_sale_order',
+                    order_id: currentOrderId,
+                    partner_id: document.getElementById('saleCustomerId').value,
+                    payment_term_id: document.getElementById('salePaymentTerm').value,
+                    warehouse_id: document.getElementById('saleWarehouse').value,
+                    lines: coletarLinhasDoFormulario(),
+                    removed_line_ids: linesToRemove,
+                    confirm: true
+                })
+            });
+
+            const data = await res.json();
+
+            if (!data.success) {
+                alert(data.error || 'Erro ao confirmar o pedido.');
+                return;
+            }
+
+            if (data.warnings && data.warnings.length > 0) {
+                alert('Pedido confirmado, mas com avisos:\n\n- ' + data.warnings.join('\n- '));
+            } else {
+                alert('Pedido confirmado e venda lançada com sucesso! O estoque foi baixado do local selecionado.');
+            }
+
             fecharSaleModal();
-            alert('Fatura confirmada e lançada com sucesso!');
             buscarVendas();
         } catch (e) {
-            alert('Erro ao lançar fatura.');
+            alert('Erro de conexão ao confirmar o pedido.');
         }
     }
 
