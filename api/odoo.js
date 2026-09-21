@@ -344,12 +344,17 @@ export default async function handler(req, res) {
             if (!invoices || invoices.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
 
             const invoice = invoices[0];
-            const lines = await execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
-                fields: ["id", "product_id", "quantity", "price_unit", "price_subtotal"]
-            });
-            const partners = await execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 });
-            const paymentTerms = await execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] });
-            const products = await execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] });
+
+            // Cada consulta auxiliar roda isolada: se uma falhar (instabilidade pontual do Odoo),
+            // não derruba a tela inteira - apenas volta vazia nesse campo específico.
+            const [lines, partners, paymentTerms, products] = await Promise.all([
+                execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
+                    fields: ["id", "product_id", "quantity", "price_unit", "price_subtotal"]
+                }).catch(() => []),
+                execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 }).catch(() => []),
+                execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] }).catch(() => []),
+                execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] }).catch(() => [])
+            ]);
 
             return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
         }
