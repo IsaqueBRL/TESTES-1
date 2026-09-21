@@ -973,6 +973,7 @@
         currentOrderTotal = 0;
         linesToRemove = [];
         availableProducts = [];
+        isCurrentInvoiceEditable = true;
 
         document.getElementById('saleModalTitle').innerText = 'Novo Pedido de Venda';
         document.getElementById('ribbonPagoBadge').style.display = 'none';
@@ -1495,8 +1496,15 @@
     }
 
     function adicionarLinhaProduto() {
-        if (!isCurrentInvoiceEditable) return;
+        if (!isCurrentInvoiceEditable) {
+            console.warn('adicionarLinhaProduto: formulário não está em modo editável, linha não adicionada.');
+            return;
+        }
         const tbody = document.getElementById('saleLinesBody');
+        if (!tbody) {
+            console.error('adicionarLinhaProduto: #saleLinesBody não encontrado no DOM.');
+            return;
+        }
         
         let options = `<option value="">Selecione um produto...</option>` + availableProducts.map(p => 
             `<option value="${p.id}">${p.display_name}</option>`
