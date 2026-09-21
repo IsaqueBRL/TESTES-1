@@ -59,6 +59,20 @@ export default async function handler(req, res) {
             }).then(r => r.json()).then(d => d.result);
         };
 
+        // Encontra o tipo de operação de "Transferência Interna" correspondente ao local de origem
+        // (mesma lógica que o próprio Odoo usa para preencher "Tipo de operação" automaticamente)
+        const resolveInternalPickingType = async (locationId) => {
+            const types = await execute("stock.picking.type", "search_read", [[["code", "=", "internal"]]], {
+                fields: ["id", "name", "default_location_src_id", "default_location_dest_id"]
+            });
+            if (!types || types.length === 0) return null;
+            if (locationId) {
+                const match = types.find(t => Array.isArray(t.default_location_src_id) && t.default_location_src_id[0] === Number(locationId));
+                if (match) return match;
+            }
+            return types[0];
+        };
+
         // AÇÃO: BUSCAR PAGAMENTOS DA FATURA
         if (action === "get_invoice_payments") {
             const { order_id } = body;
@@ -385,6 +399,137 @@ export default async function handler(req, res) {
             } else {
                 await execute("account.move", "action_post", [[Number(order_id)]]);
             }
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: BUSCAR LOCAIS DE ESTOQUE INTERNOS (PARA TRANSFERÊNCIAS)
+        if (action === "get_locations") {
+            const locations = await execute("stock.location", "search_read", [[["usage", "=", "internal"]]], {
+                fields: ["id", "complete_name"],
+                limit: 200
+            });
+            return res.status(200).json({ result: locations || [] });
+        }
+
+        // AÇÃO: BUSCAR TRANSFERÊNCIAS INTERNAS
+        if (action === "get_transfers") {
+            const query = body.query || "";
+            const domain = [["picking_type_id.code", "=", "internal"]];
+            if (query) domain.push(["name", "ilike", query]);
+
+            const result = await execute("stock.picking", "search_read", [domain], {
+                fields: ["id", "name", "location_id", "location_dest_id", "state"],
+                order: "id desc",
+                limit: 100
+            });
+            return res.status(200).json({ result: result || [] });
+        }
+
+        // AÇÃO: DETALHES DE UMA TRANSFERÊNCIA
+        if (action === "get_transfer_detail") {
+            const { order_id } = body;
+            const pickings = await execute("stock.picking", "search_read", [[["id", "=", order_id]]], {
+                fields: ["id", "name", "location_id", "location_dest_id", "state", "picking_type_id"]
+            });
+            if (!pickings || pickings.length === 0) return res.status(404).json({ error: "Transferência não encontrada." });
+
+            const picking = pickings[0];
+            const moves = await execute("stock.move", "search_read", [[["picking_id", "=", order_id]]], {
+                fields: ["id", "product_id", "product_uom_qty"]
+            });
+            const locations = await execute("stock.location", "search_read", [[["usage", "=", "internal"]]], {
+                fields: ["id", "complete_name"],
+                limit: 200
+            });
+            const products = await execute("product.product", "search_read", [[["type", "!=", "service"]]], {
+                fields: ["id", "display_name", "uom_id"],
+                limit: 200
+            });
+
+            return res.status(200).json({ order: picking, lines: moves || [], locations: locations || [], products: products || [] });
+        }
+
+        // AÇÃO: CRIAR NOVA TRANSFERÊNCIA INTERNA
+        if (action === "create_transfer") {
+            const defaultType = await resolveInternalPickingType(null);
+            if (!defaultType) {
+                return res.status(400).json({ error: "Nenhum tipo de operação de Transferência Interna encontrado no Odoo." });
+            }
+
+            const newPickingId = await execute("stock.picking", "create", [{
+                picking_type_id: defaultType.id,
+                location_id: Array.isArray(defaultType.default_location_src_id) ? defaultType.default_location_src_id[0] : false,
+                location_dest_id: Array.isArray(defaultType.default_location_dest_id) ? defaultType.default_location_dest_id[0] : false
+            }]);
+
+            return res.status(200).json({ success: true, id: newPickingId });
+        }
+
+        // AÇÃO: EXCLUIR TRANSFERÊNCIA (APENAS PERMITIDO EM RASCUNHO PELO PRÓPRIO ODOO)
+        if (action === "delete_transfer") {
+            const { order_id } = body;
+            if (!order_id) return res.status(400).json({ error: "ID da transferência é obrigatório." });
+            await execute("stock.picking", "unlink", [[Number(order_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: ATUALIZAR LOCAIS/ITENS DA TRANSFERÊNCIA E, OPCIONALMENTE, VALIDAR
+        if (action === "update_transfer") {
+            const { order_id, location_id, location_dest_id, lines, validate } = body;
+            if (!order_id) return res.status(400).json({ error: "ID da transferência é obrigatório." });
+
+            const writeData = {};
+            if (location_id) writeData.location_id = Number(location_id);
+            if (location_dest_id) writeData.location_dest_id = Number(location_dest_id);
+
+            if (location_id) {
+                const matchedType = await resolveInternalPickingType(location_id);
+                if (matchedType) writeData.picking_type_id = matchedType.id;
+            }
+
+            if (Object.keys(writeData).length > 0) {
+                await execute("stock.picking", "write", [[Number(order_id)], writeData]);
+
+                const moveLocUpdate = {};
+                if (writeData.location_id) moveLocUpdate.location_id = writeData.location_id;
+                if (writeData.location_dest_id) moveLocUpdate.location_dest_id = writeData.location_dest_id;
+
+                const existingMoveIds = (lines || []).filter(l => l.id).map(l => Number(l.id));
+                if (Object.keys(moveLocUpdate).length > 0 && existingMoveIds.length > 0) {
+                    await execute("stock.move", "write", [existingMoveIds, moveLocUpdate]);
+                }
+            }
+
+            for (const l of (lines || [])) {
+                if (!l.product_id) continue;
+
+                if (l.id) {
+                    await execute("stock.move", "write", [[Number(l.id)], {
+                        product_id: Number(l.product_id),
+                        product_uom_qty: Number(l.qty)
+                    }]);
+                } else {
+                    const productInfo = await execute("product.product", "read", [[Number(l.product_id)]], {
+                        fields: ["display_name", "uom_id"]
+                    });
+                    const prod = (productInfo && productInfo[0]) || {};
+
+                    await execute("stock.move", "create", [{
+                        picking_id: Number(order_id),
+                        product_id: Number(l.product_id),
+                        product_uom_qty: Number(l.qty),
+                        name: prod.display_name || "Transferência Interna",
+                        product_uom: Array.isArray(prod.uom_id) ? prod.uom_id[0] : false,
+                        location_id: writeData.location_id || (location_id ? Number(location_id) : undefined),
+                        location_dest_id: writeData.location_dest_id || (location_dest_id ? Number(location_dest_id) : undefined)
+                    }]);
+                }
+            }
+
+            if (validate) {
+                await execute("stock.picking", "button_validate", [[Number(order_id)]]);
+            }
+
             return res.status(200).json({ success: true });
         }
 
