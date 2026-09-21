@@ -61,6 +61,7 @@
         .stock-in, .status-sale { background-color: #e8f5e9; color: var(--success-color); }
         .stock-out { background-color: #ffebee; color: var(--danger-color); }
         .status-draft { background-color: #fff3e0; color: var(--warning-color); }
+        .status-cancel { background-color: #ffebee; color: var(--danger-color); }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
         .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; position: relative; }
@@ -783,15 +784,18 @@
                 const orderNum = sale.name || "-";
                 const total = sale.amount_total ?? 0;
                 const isPosted = sale.state === 'posted';
+                const isCancelled = sale.state === 'cancel';
                 const isPaid = sale.payment_state === 'paid' || sale.payment_state === 'in_payment';
+                const statusClass = isCancelled ? 'status-cancel' : (isPosted ? 'status-sale' : 'status-draft');
+                const statusLabel = isCancelled ? 'Cancelada' : (isPosted ? 'Lançado' : 'Provisório');
 
                 results.innerHTML += `
                     <tr style="cursor: pointer;" onclick="abrirDetalhesVenda(${sale.id})">
                         <td><strong style="color: var(--primary-color); text-decoration: underline;">${orderNum}</strong></td>
                         <td>${clientName}</td>
                         <td>
-                            <span class="status-badge ${isPosted ? 'status-sale' : 'status-draft'}">
-                                ${isPosted ? 'Lançado' : 'Provisório'}
+                            <span class="status-badge ${statusClass}">
+                                ${statusLabel}
                             </span>
                         </td>
                         <td class="price-col">R$ ${total.toFixed(2)}</td>
@@ -903,14 +907,15 @@
             document.getElementById('saleCustomerInput').value = currentPartnerName || "";
 
             const isPosted = invoice.state === 'posted';
+            const isCancelled = invoice.state === 'cancel';
             const isPaid = invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment';
-            isCurrentInvoiceEditable = !isPosted;
+            isCurrentInvoiceEditable = invoice.state === 'draft';
 
             document.getElementById('ribbonPagoBadge').style.display = isPaid ? 'block' : 'none';
 
             const statusBadge = document.getElementById('saleStatusBadge');
-            statusBadge.innerText = isPosted ? 'Lançado' : 'Provisório';
-            statusBadge.className = `status-badge ${isPosted ? 'status-sale' : 'status-draft'}`;
+            statusBadge.innerText = isCancelled ? 'Cancelada' : (isPosted ? 'Lançado' : 'Provisório');
+            statusBadge.className = `status-badge ${isCancelled ? 'status-cancel' : (isPosted ? 'status-sale' : 'status-draft')}`;
 
             const selectTerm = document.getElementById('salePaymentTerm');
             selectTerm.innerHTML = '<option value="">Selecione...</option>';
@@ -924,7 +929,7 @@
             document.getElementById('btnAddLine').style.display = isCurrentInvoiceEditable ? 'inline-block' : 'none';
 
             renderLines(data.lines || [], isCurrentInvoiceEditable);
-            atualizarBotoesAcao(isPosted, isPaid, invoice.name);
+            atualizarBotoesAcao(isPosted, isPaid, invoice.name, isCancelled);
 
             document.getElementById('saleModal').style.display = 'flex';
         } catch (e) {
@@ -1387,13 +1392,15 @@
         document.getElementById('saleTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
     }
 
-    function atualizarBotoesAcao(isPosted, isPaid, invoiceName) {
+    function atualizarBotoesAcao(isPosted, isPaid, invoiceName, isCancelled) {
         const container = document.getElementById('saleModalActions');
         container.innerHTML = `<button class="btn-cancel" onclick="fecharSaleModal()">Fechar</button>`;
 
         const semNumero = !invoiceName || invoiceName === "/" || invoiceName === "-";
 
-        if (isPosted) {
+        if (isCancelled) {
+            container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="destravarParaEdicao()">Voltar para Provisório</button>`;
+        } else if (isPosted) {
             if (isPaid) {
                 container.innerHTML += `<button class="btn-action" style="background-color: var(--edit-color);" onclick="abrirModalPagamentosEntrada()">Pagamentos</button>`;
             } else {
