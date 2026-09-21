@@ -62,6 +62,7 @@
         .stock-out { background-color: #ffebee; color: var(--danger-color); }
         .status-draft { background-color: #fff3e0; color: var(--warning-color); }
         .status-cancel { background-color: #ffebee; color: var(--danger-color); }
+        .status-info { background-color: #e3f2fd; color: var(--edit-color); }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 15px; }
         .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; position: relative; }
@@ -211,6 +212,7 @@
             <button class="btn-menu" onclick="mostrarTela('estoqueSection'); buscarEstoque();">ESTOQUE</button>
             <button class="btn-menu" onclick="mostrarTela('vendasSection'); buscarVendas();">VENDAS</button>
             <button class="btn-menu" onclick="mostrarTela('financeiroSection'); buscarFinanceiro();">FINANCEIRO</button>
+            <button class="btn-menu" onclick="mostrarTela('transferenciasSection'); buscarTransferencias();">TRANSFERÊNCIAS</button>
         </div>
     </div>
 
@@ -269,6 +271,38 @@
                     </tr>
                 </thead>
                 <tbody id="resultsEstoque"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TELA DE TRANSFERÊNCIAS -->
+    <div id="transferenciasSection" class="view-section">
+        <div class="top-nav">
+            <button class="btn-back" onclick="mostrarTela('homeSection')">← Voltar</button>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h2>Transferências Internas</h2>
+                <button class="btn-action" onclick="criarNovaTransferencia()">+ Nova Transferência</button>
+            </div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="searchTransferenciasInput" placeholder="Digite a referência da transferência..." oninput="debounceSearch('transferencias')">
+            <button onclick="buscarTransferencias()">Pesquisar</button>
+        </div>
+
+        <div id="statusTransferencias" class="status">Carregando transferências...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>REFERÊNCIA</th>
+                        <th>DE</th>
+                        <th>PARA</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTransferencias"></tbody>
             </table>
         </div>
     </div>
@@ -462,6 +496,46 @@
     </div>
 </div>
 
+<!-- Modal: Detalhes / Nova Transferência -->
+<div class="modal-overlay" id="transferModal">
+    <div class="modal" style="max-width: 650px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 id="transferModalTitle">Transferência</h2>
+            <span id="transferStatusBadge" class="status-badge"></span>
+        </div>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <label>Local de Origem</label>
+                <select id="transferLocationSrc" onchange="marcarAlteracaoTransferencia()"></select>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <label>Local de Destino</label>
+                <select id="transferLocationDest" onchange="marcarAlteracaoTransferencia()"></select>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Itens Transferidos</h3>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>PRODUTO</th>
+                        <th style="width: 110px;">DEMANDA</th>
+                        <th style="width: 40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="transferLinesBody"></tbody>
+            </table>
+        </div>
+
+        <button id="btnAddTransferLine" class="btn-add-line" onclick="adicionarLinhaTransferencia()">Adicionar uma linha</button>
+
+        <div class="modal-actions" id="transferModalActions"></div>
+    </div>
+</div>
+
 <!-- Modal: Pop-up Bonito (Alert/Confirm Customizado) -->
 <div id="customModal" class="custom-modal-overlay">
   <div class="custom-modal-box">
@@ -582,6 +656,11 @@
     let availableProducts = [];
     let isCurrentInvoiceEditable = false;
     let availableJournals = [];
+    let currentTransferId = null;
+    let availableLocations = [];
+    let availableTransferProducts = [];
+    let isCurrentTransferEditable = false;
+    let transferHasChanges = false;
 
     function mostrarTela(idTela) {
         document.getElementById('homeSection').style.display = 'none';
@@ -589,6 +668,7 @@
         document.getElementById('estoqueSection').style.display = 'none';
         document.getElementById('vendasSection').style.display = 'none';
         document.getElementById('financeiroSection').style.display = 'none';
+        document.getElementById('transferenciasSection').style.display = 'none';
 
         const telaTarget = document.getElementById(idTela);
         telaTarget.style.display = idTela === 'homeSection' ? 'flex' : 'block';
@@ -601,6 +681,7 @@
             if (tipo === 'estoque') buscarEstoque();
             if (tipo === 'vendas') buscarVendas();
             if (tipo === 'financeiro') buscarFinanceiro();
+            if (tipo === 'transferencias') buscarTransferencias();
         }, 300);
     }
 
@@ -1577,6 +1658,305 @@
 
     function fecharSaleModal() {
         document.getElementById('saleModal').style.display = 'none';
+    }
+
+    /* ------------------------------------------------------------
+       TRANSFERÊNCIAS INTERNAS (stock.picking)
+       ------------------------------------------------------------ */
+
+    function getTransferStatusMeta(state) {
+        switch (state) {
+            case 'draft': return { label: 'Rascunho', cls: 'status-draft' };
+            case 'waiting': return { label: 'Aguardando', cls: 'status-info' };
+            case 'confirmed': return { label: 'Aguardando', cls: 'status-info' };
+            case 'assigned': return { label: 'Pronto', cls: 'status-info' };
+            case 'done': return { label: 'Concluído', cls: 'status-sale' };
+            case 'cancel': return { label: 'Cancelada', cls: 'status-cancel' };
+            default: return { label: state || '-', cls: 'status-draft' };
+        }
+    }
+
+    async function buscarTransferencias() {
+        const query = document.getElementById("searchTransferenciasInput").value.trim();
+        const status = document.getElementById("statusTransferencias");
+        const results = document.getElementById("resultsTransferencias");
+
+        status.innerText = "Pesquisando transferências...";
+
+        try {
+            const response = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "get_transfers", query })
+            });
+            const data = await response.json();
+            const transfers = data.result || [];
+
+            if (transfers.length === 0) {
+                status.innerText = "Nenhuma transferência encontrada.";
+                results.innerHTML = "";
+                return;
+            }
+
+            status.innerText = `${transfers.length} transferência(s) encontrada(s):`;
+            results.innerHTML = "";
+
+            transfers.forEach(t => {
+                const de = Array.isArray(t.location_id) ? t.location_id[1] : '-';
+                const para = Array.isArray(t.location_dest_id) ? t.location_dest_id[1] : '-';
+                const meta = getTransferStatusMeta(t.state);
+
+                results.innerHTML += `
+                    <tr style="cursor: pointer;" onclick="abrirDetalhesTransferencia(${t.id})">
+                        <td><strong style="color: var(--primary-color); text-decoration: underline;">${t.name}</strong></td>
+                        <td>${de}</td>
+                        <td>${para}</td>
+                        <td><span class="status-badge ${meta.cls}">${meta.label}</span></td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            status.innerText = "Erro ao buscar transferências.";
+        }
+    }
+
+    async function criarNovaTransferencia() {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'create_transfer' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                await abrirDetalhesTransferencia(data.id);
+                buscarTransferencias();
+            } else {
+                alert(data.error || 'Erro ao criar nova transferência.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao criar transferência.');
+        }
+    }
+
+    async function abrirDetalhesTransferencia(id) {
+        currentTransferId = id;
+        transferHasChanges = false;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_transfer_detail', order_id: id })
+            });
+            const data = await res.json();
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            const picking = data.order;
+            availableLocations = data.locations || [];
+            availableTransferProducts = data.products || [];
+
+            const isDraft = picking.state === 'draft';
+            isCurrentTransferEditable = isDraft;
+
+            document.getElementById('transferModalTitle').innerText = `Transferência ${picking.name}`;
+            const meta = getTransferStatusMeta(picking.state);
+            const statusBadge = document.getElementById('transferStatusBadge');
+            statusBadge.innerText = meta.label;
+            statusBadge.className = `status-badge ${meta.cls}`;
+
+            const srcId = Array.isArray(picking.location_id) ? picking.location_id[0] : picking.location_id;
+            const destId = Array.isArray(picking.location_dest_id) ? picking.location_dest_id[0] : picking.location_dest_id;
+
+            const locOptions = availableLocations.map(l =>
+                `<option value="${l.id}">${l.complete_name}</option>`
+            ).join('');
+
+            const selectSrc = document.getElementById('transferLocationSrc');
+            const selectDest = document.getElementById('transferLocationDest');
+            selectSrc.innerHTML = locOptions;
+            selectDest.innerHTML = locOptions;
+            selectSrc.value = srcId;
+            selectDest.value = destId;
+            selectSrc.disabled = !isDraft;
+            selectDest.disabled = !isDraft;
+
+            renderTransferLines(data.lines || [], isDraft);
+            document.getElementById('btnAddTransferLine').style.display = isDraft ? 'inline-block' : 'none';
+
+            atualizarBotoesTransferencia(picking.state);
+
+            document.getElementById('transferModal').style.display = 'flex';
+        } catch (e) {
+            alert('Erro ao carregar detalhes da transferência.');
+        }
+    }
+
+    function renderTransferLines(lines, editavel) {
+        const tbody = document.getElementById('transferLinesBody');
+        tbody.innerHTML = "";
+
+        lines.forEach(line => {
+            const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
+            let options = availableTransferProducts.map(p =>
+                `<option value="${p.id}" ${p.id === prodId ? 'selected' : ''}>${p.display_name}</option>`
+            ).join('');
+
+            tbody.innerHTML += `
+                <tr class="line-row" data-line-id="${line.id || ''}">
+                    <td><select class="line-product" ${editavel ? '' : 'disabled'} onchange="marcarAlteracaoTransferencia()">${options}</select></td>
+                    <td><input type="number" class="line-qty" value="${line.product_uom_qty || 1}" step="1" ${editavel ? '' : 'readonly'} oninput="marcarAlteracaoTransferencia()"></td>
+                    <td>${editavel ? `<button class="btn-remove-line" onclick="removerLinhaTransferencia(this)">×</button>` : ''}</td>
+                </tr>
+            `;
+        });
+    }
+
+    function adicionarLinhaTransferencia() {
+        if (!isCurrentTransferEditable) return;
+        const tbody = document.getElementById('transferLinesBody');
+
+        let options = `<option value="">Selecione um produto...</option>` + availableTransferProducts.map(p =>
+            `<option value="${p.id}">${p.display_name}</option>`
+        ).join('');
+
+        const tr = document.createElement('tr');
+        tr.className = 'line-row';
+        tr.setAttribute('data-line-id', '');
+        tr.innerHTML = `
+            <td><select class="line-product" onchange="marcarAlteracaoTransferencia()">${options}</select></td>
+            <td><input type="number" class="line-qty" value="1" step="1" oninput="marcarAlteracaoTransferencia()"></td>
+            <td><button class="btn-remove-line" onclick="removerLinhaTransferencia(this)">×</button></td>
+        `;
+        tbody.appendChild(tr);
+        marcarAlteracaoTransferencia();
+    }
+
+    function removerLinhaTransferencia(btn) {
+        btn.closest('.line-row').remove();
+        marcarAlteracaoTransferencia();
+    }
+
+    function marcarAlteracaoTransferencia() {
+        if (!isCurrentTransferEditable) return;
+        transferHasChanges = true;
+        atualizarBotoesTransferencia('draft');
+    }
+
+    function atualizarBotoesTransferencia(state) {
+        const container = document.getElementById('transferModalActions');
+        container.innerHTML = `<button class="btn-cancel" onclick="fecharTransferModal()">Fechar</button>`;
+
+        if (state === 'draft') {
+            container.innerHTML += `<button class="btn-delete" onclick="excluirTransferencia()">Excluir</button>`;
+            if (transferHasChanges) {
+                container.innerHTML += `<button class="btn-save" onclick="salvarTransferencia()">Salvar</button>`;
+            }
+            container.innerHTML += `<button class="btn-action" onclick="validarTransferencia()">Validar</button>`;
+        }
+    }
+
+    function coletarDadosTransferencia() {
+        const linesData = [];
+        document.querySelectorAll('#transferLinesBody .line-row').forEach(row => {
+            const prodVal = row.querySelector('.line-product').value;
+            if (prodVal) {
+                linesData.push({
+                    id: row.getAttribute('data-line-id') || null,
+                    product_id: prodVal,
+                    qty: row.querySelector('.line-qty').value
+                });
+            }
+        });
+
+        return {
+            order_id: currentTransferId,
+            location_id: document.getElementById('transferLocationSrc').value,
+            location_dest_id: document.getElementById('transferLocationDest').value,
+            lines: linesData
+        };
+    }
+
+    async function salvarTransferencia() {
+        const payload = coletarDadosTransferencia();
+        payload.action = 'update_transfer';
+        payload.validate = false;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Alterações salvas com sucesso!');
+                transferHasChanges = false;
+                await abrirDetalhesTransferencia(currentTransferId);
+                buscarTransferencias();
+            } else {
+                alert(data.error || 'Erro ao salvar transferência.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao salvar transferência.');
+        }
+    }
+
+    async function validarTransferencia() {
+        const confirmar = await mostrarConfirmacao('Deseja validar esta transferência? As quantidades serão movimentadas entre os locais.', 'Validar Transferência');
+        if (!confirmar) return;
+
+        const payload = coletarDadosTransferencia();
+        payload.action = 'update_transfer';
+        payload.validate = true;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                fecharTransferModal();
+                alert('Transferência validada com sucesso!');
+                buscarTransferencias();
+            } else {
+                alert(data.error || 'Erro ao validar transferência.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao validar transferência.');
+        }
+    }
+
+    async function excluirTransferencia() {
+        const confirmar = await mostrarConfirmacao('Tem certeza que deseja excluir esta transferência em rascunho?', 'Excluir Transferência');
+        if (!confirmar) return;
+
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_transfer', order_id: currentTransferId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                fecharTransferModal();
+                alert('Transferência excluída com sucesso!');
+                buscarTransferencias();
+            } else {
+                alert(data.error || 'Erro ao excluir transferência.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao excluir transferência.');
+        }
+    }
+
+    function fecharTransferModal() {
+        document.getElementById('transferModal').style.display = 'none';
     }
 </script>
 
