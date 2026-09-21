@@ -236,6 +236,24 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: formattedAccounts });
         }
 
+        // AÇÃO: DADOS DE APOIO PARA MONTAR UM NOVO PEDIDO DE VENDA (CONDIÇÕES DE PAGAMENTO, PRODUTOS, ARMAZÉNS)
+        if (action === "get_sale_form_data") {
+            const [paymentTerms, products, warehouses] = await Promise.all([
+                execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] }).catch(() => []),
+                execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] }).catch(() => []),
+                execute("stock.warehouse", "search_read", [[]], { fields: ["id", "name", "code"] }).catch(() => [])
+            ]);
+            return res.status(200).json({ payment_terms: paymentTerms || [], products: products || [], warehouses: warehouses || [] });
+        }
+
+        // AÇÃO: BUSCAR ARMAZÉNS (LOCAIS DE ESTOQUE PARA VENDA)
+        if (action === "get_warehouses") {
+            const warehouses = await execute("stock.warehouse", "search_read", [[]], {
+                fields: ["id", "name", "code"]
+            });
+            return res.status(200).json({ result: warehouses || [] });
+        }
+
         // AÇÃO: ATUALIZAR PRODUTO
         if (action === "update_product") {
             const { product_id, name, list_price, standard_price } = body;
@@ -250,32 +268,143 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: CRIAR NOVA VENDA / FATURA
-        if (action === "create_sale") {
-            const newInvoiceId = await execute("account.move", "create", [{
-                move_type: "out_invoice"
-            }]);
-            return res.status(200).json({ success: true, id: newInvoiceId });
-        }
-
-        // AÇÃO: EXCLUIR FATURA
-        if (action === "delete_sale") {
+        // AÇÃO: EXCLUIR PEDIDO DE VENDA (SOMENTE ORÇAMENTO)
+        if (action === "delete_sale_order") {
             const { order_id } = body;
             if (!order_id) {
-                return res.status(400).json({ error: "ID da fatura é obrigatório." });
+                return res.status(400).json({ error: "ID do pedido é obrigatório." });
             }
-            await execute("account.move", "unlink", [[Number(order_id)]]);
+            await execute("sale.order", "unlink", [[Number(order_id)]]);
             return res.status(200).json({ success: true });
         }
 
-        // AÇÃO: CANCELAR FATURA
-        if (action === "cancel_sale") {
+        // AÇÃO: CANCELAR PEDIDO DE VENDA
+        if (action === "cancel_sale_order") {
             const { order_id } = body;
             if (!order_id) {
-                return res.status(400).json({ error: "ID da fatura é obrigatório." });
+                return res.status(400).json({ error: "ID do pedido é obrigatório." });
             }
-            await execute("account.move", "button_cancel", [[Number(order_id)]]);
+            await execute("sale.order", "action_cancel", [[Number(order_id)]]);
             return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: REABRIR PEDIDO CANCELADO/CONFIRMADO COMO ORÇAMENTO (EDITÁVEL)
+        if (action === "reopen_sale_order") {
+            const { order_id } = body;
+            if (!order_id) {
+                return res.status(400).json({ error: "ID do pedido é obrigatório." });
+            }
+            try {
+                await execute("sale.order", "action_cancel", [[Number(order_id)]]);
+            } catch (e) { /* já pode estar cancelado */ }
+            await execute("sale.order", "action_draft", [[Number(order_id)]]);
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: CRIAR/ATUALIZAR PEDIDO DE VENDA (E, OPCIONALMENTE, CONFIRMAR + BAIXAR ESTOQUE + FATURAR)
+        if (action === "save_sale_order") {
+            const { order_id, partner_id, payment_term_id, warehouse_id, lines, confirm, removed_line_ids } = body;
+
+            if (!partner_id) return res.status(400).json({ error: "Selecione um cliente para o pedido." });
+            const validLines = (lines || []).filter(l => l.product_id);
+            if (validLines.length === 0) return res.status(400).json({ error: "Adicione ao menos um produto ao pedido." });
+
+            let orderId = order_id ? Number(order_id) : null;
+
+            const headerData = {
+                partner_id: Number(partner_id),
+                payment_term_id: payment_term_id ? Number(payment_term_id) : false
+            };
+            if (warehouse_id) headerData.warehouse_id = Number(warehouse_id);
+
+            if (!orderId) {
+                headerData.order_line = validLines.map(l => [0, 0, {
+                    product_id: Number(l.product_id),
+                    product_uom_qty: Number(l.qty),
+                    price_unit: Number(l.price)
+                }]);
+                orderId = await execute("sale.order", "create", [headerData]);
+            } else {
+                await execute("sale.order", "write", [[orderId], headerData]);
+
+                for (const rid of (removed_line_ids || [])) {
+                    await execute("sale.order.line", "unlink", [[Number(rid)]]).catch(() => {});
+                }
+
+                for (const l of validLines) {
+                    if (l.id) {
+                        await execute("sale.order.line", "write", [[Number(l.id)], {
+                            product_id: Number(l.product_id),
+                            product_uom_qty: Number(l.qty),
+                            price_unit: Number(l.price)
+                        }]);
+                    } else {
+                        await execute("sale.order.line", "create", [{
+                            order_id: orderId,
+                            product_id: Number(l.product_id),
+                            product_uom_qty: Number(l.qty),
+                            price_unit: Number(l.price)
+                        }]);
+                    }
+                }
+            }
+
+            let warnings = [];
+            let invoiceId = null;
+
+            if (confirm) {
+                try {
+                    await execute("sale.order", "action_confirm", [[orderId]]);
+                } catch (e) {
+                    return res.status(200).json({ success: true, id: orderId, warnings: ["Pedido salvo, mas não foi possível confirmá-lo: " + e.message] });
+                }
+
+                // Tenta validar a(s) entrega(s) geradas, para baixar o estoque do local/armazém escolhido
+                try {
+                    const pickings = await execute("stock.picking", "search_read", [[["sale_id", "=", orderId], ["state", "not in", ["done", "cancel"]]]], {
+                        fields: ["id"]
+                    });
+                    for (const p of (pickings || [])) {
+                        try {
+                            await execute("stock.picking", "button_validate", [[p.id]]);
+                        } catch (e) {
+                            warnings.push("Pedido confirmado, mas a entrega #" + p.id + " não pôde ser concluída automaticamente. Finalize-a no Odoo para baixar o estoque.");
+                        }
+                    }
+                } catch (e) {
+                    warnings.push("Não foi possível localizar a entrega gerada pelo pedido.");
+                }
+
+                // Gera e lança a fatura do pedido confirmado
+                try {
+                    const invoiceIds = await execute("sale.order", "_create_invoices", [[orderId]]);
+                    if (invoiceIds && invoiceIds.length > 0) {
+                        invoiceId = invoiceIds[0];
+                        await execute("account.move", "action_post", [invoiceIds]);
+                    }
+                } catch (e) {
+                    warnings.push("Pedido confirmado, mas não foi possível gerar/lançar a fatura automaticamente: " + e.message);
+                }
+            }
+
+            return res.status(200).json({ success: true, id: orderId, invoice_id: invoiceId, warnings });
+        }
+
+        // AÇÃO: GERAR E LANÇAR FATURA DE UM PEDIDO JÁ CONFIRMADO (CASO AINDA NÃO TENHA FATURA)
+        if (action === "invoice_and_post_order") {
+            const { order_id } = body;
+            if (!order_id) return res.status(400).json({ error: "ID do pedido é obrigatório." });
+
+            try {
+                const invoiceIds = await execute("sale.order", "_create_invoices", [[Number(order_id)]]);
+                if (!invoiceIds || invoiceIds.length === 0) {
+                    return res.status(400).json({ error: "Não foi possível gerar a fatura para este pedido." });
+                }
+                await execute("account.move", "action_post", [invoiceIds]);
+                return res.status(200).json({ success: true, invoice_id: invoiceIds[0] });
+            } catch (e) {
+                return res.status(500).json({ error: "Erro ao gerar/lançar fatura: " + e.message });
+            }
         }
 
         // AÇÃO: BUSCAR PARCEIROS
@@ -319,92 +448,71 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: result || [] });
         }
 
-        // AÇÃO: BUSCAR FATURAS DE VENDAS
+        // AÇÃO: BUSCAR PEDIDOS DE VENDAS
         if (action === "get_sales") {
             const query = body.query || "";
-            const domain = [["move_type", "=", "out_invoice"]];
+            const domain = [];
             if (query) {
                 domain.push('|', ['name', 'ilike', query], ['partner_id.name', 'ilike', query]);
             }
 
-            const result = await execute("account.move", "search_read", [domain], {
-                fields: ["id", "name", "partner_id", "amount_total", "state", "payment_state"],
+            const orders = await execute("sale.order", "search_read", [domain], {
+                fields: ["id", "name", "partner_id", "amount_total", "state", "invoice_status", "invoice_ids", "warehouse_id"],
                 order: "id desc",
                 limit: 100
             });
-            return res.status(200).json({ result: result || [] });
+
+            // Busca em lote o status de pagamento das faturas ligadas a cada pedido
+            const allInvoiceIds = [];
+            (orders || []).forEach(o => (o.invoice_ids || []).forEach(id => allInvoiceIds.push(id)));
+
+            let invoiceMap = {};
+            if (allInvoiceIds.length > 0) {
+                const invoices = await execute("account.move", "search_read", [[["id", "in", allInvoiceIds]]], {
+                    fields: ["id", "payment_state", "state"]
+                }).catch(() => []);
+                (invoices || []).forEach(inv => { invoiceMap[inv.id] = inv; });
+            }
+
+            const result = (orders || []).map(o => {
+                const invs = (o.invoice_ids || []).map(id => invoiceMap[id]).filter(Boolean);
+                let paymentSummary = "nao_faturado";
+                if (invs.length > 0) {
+                    const allPaid = invs.every(i => i.payment_state === 'paid' || i.payment_state === 'in_payment');
+                    paymentSummary = allPaid ? "pago" : "nao_pago";
+                }
+                return { ...o, payment_summary: paymentSummary };
+            });
+
+            return res.status(200).json({ result });
         }
 
-        // AÇÃO: DETALHES DE UMA FATURA
+        // AÇÃO: DETALHES DE UM PEDIDO DE VENDA
         if (action === "get_sale_detail") {
             const { order_id } = body;
-            const invoices = await execute("account.move", "search_read", [[["id", "=", order_id]]], {
-                fields: ["id", "name", "partner_id", "invoice_payment_term_id", "invoice_line_ids", "state", "payment_state", "amount_total"]
+            const orders = await execute("sale.order", "search_read", [[["id", "=", order_id]]], {
+                fields: ["id", "name", "partner_id", "payment_term_id", "order_line", "state", "amount_total", "warehouse_id", "invoice_ids", "invoice_status"]
             });
-            if (!invoices || invoices.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
+            if (!orders || orders.length === 0) return res.status(404).json({ error: "Pedido de venda não encontrado." });
 
-            const invoice = invoices[0];
+            const order = orders[0];
 
             // Cada consulta auxiliar roda isolada: se uma falhar (instabilidade pontual do Odoo),
             // não derruba a tela inteira - apenas volta vazia nesse campo específico.
-            const [lines, partners, paymentTerms, products] = await Promise.all([
-                execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
-                    fields: ["id", "product_id", "quantity", "price_unit", "price_subtotal"]
+            const [lines, partners, paymentTerms, products, warehouses, invoices] = await Promise.all([
+                execute("sale.order.line", "search_read", [[["id", "in", order.order_line], ["display_type", "=", false]]], {
+                    fields: ["id", "product_id", "product_uom_qty", "price_unit", "price_subtotal"]
                 }).catch(() => []),
                 execute("res.partner", "search_read", [[]], { fields: ["id", "name"], limit: 100 }).catch(() => []),
                 execute("account.payment.term", "search_read", [[]], { fields: ["id", "name"] }).catch(() => []),
-                execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] }).catch(() => [])
+                execute("product.product", "search_read", [[["sale_ok", "=", true]]], { fields: ["id", "display_name", "list_price"] }).catch(() => []),
+                execute("stock.warehouse", "search_read", [[]], { fields: ["id", "name"] }).catch(() => []),
+                (order.invoice_ids && order.invoice_ids.length > 0)
+                    ? execute("account.move", "search_read", [[["id", "in", order.invoice_ids]]], { fields: ["id", "name", "state", "payment_state", "amount_total"] }).catch(() => [])
+                    : Promise.resolve([])
             ]);
 
-            return res.status(200).json({ order: invoice, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [] });
-        }
-
-        // AÇÃO: ATUALIZAR LINHAS DA FATURA
-        if (action === "update_sale") {
-            const { order_id, partner_id, payment_term_id, lines, post_invoice } = body;
-            
-            const writeData = {
-                invoice_payment_term_id: payment_term_id ? Number(payment_term_id) : false
-            };
-            if (partner_id) {
-                writeData.partner_id = Number(partner_id);
-            }
-
-            await execute("account.move", "write", [[Number(order_id)], writeData]);
-
-            for (const l of lines) {
-                if (l.id) {
-                    await execute("account.move.line", "write", [[Number(l.id)], {
-                        product_id: Number(l.product_id),
-                        quantity: Number(l.qty),
-                        price_unit: Number(l.price)
-                    }]);
-                } else if (l.product_id) {
-                    await execute("account.move.line", "create", [{
-                        move_id: Number(order_id),
-                        product_id: Number(l.product_id),
-                        quantity: Number(l.qty),
-                        price_unit: Number(l.price)
-                    }]);
-                }
-            }
-
-            if (post_invoice) {
-                await execute("account.move", "action_post", [[Number(order_id)]]);
-            }
-
-            return res.status(200).json({ success: true });
-        }
-
-        // AÇÃO: ALTERAR STATUS
-        if (action === "toggle_lock_sale") {
-            const { order_id, lock } = body;
-            if (!lock) {
-                await execute("account.move", "button_draft", [[Number(order_id)]]);
-            } else {
-                await execute("account.move", "action_post", [[Number(order_id)]]);
-            }
-            return res.status(200).json({ success: true });
+            return res.status(200).json({ order, lines: lines || [], partners: partners || [], payment_terms: paymentTerms || [], products: products || [], warehouses: warehouses || [], invoices: invoices || [] });
         }
 
         // AÇÃO: BUSCAR LOCAIS DE ESTOQUE INTERNOS (PARA TRANSFERÊNCIAS)
