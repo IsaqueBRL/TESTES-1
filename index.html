@@ -501,6 +501,55 @@
     </div>
 </div>
 
+<!-- Modal: Revisão/Edição da Fatura (rascunho gerado a partir do Pedido de Venda) -->
+<div class="modal-overlay" id="invoiceModal">
+    <div class="modal" style="max-width: 750px;">
+        <div id="ribbonPagoInvoiceBadge" class="ribbon-pago" style="display: none;">PAGO</div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 id="invoiceModalTitle">Fatura</h2>
+            <span id="invoiceStatusBadge" class="status-badge"></span>
+        </div>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 220px;">
+                <label>Cliente</label>
+                <input type="text" id="invoiceCustomerInput" disabled>
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+                <label>Data da Fatura</label>
+                <input type="date" id="invoiceDateInput">
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+                <label>Condição de Pagamento</label>
+                <input type="text" id="invoicePaymentTermInput" disabled>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 10px; font-size: 14px; color: var(--primary-color);">Produtos</h3>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>PRODUTO</th>
+                        <th style="width: 70px;">QTD</th>
+                        <th style="width: 100px;">DESCONTO %</th>
+                        <th>TOTAL DO PRODUTO</th>
+                    </tr>
+                </thead>
+                <tbody id="invoiceLinesBody"></tbody>
+            </table>
+        </div>
+
+        <div style="text-align: right; margin-top: 10px; font-size: 16px; font-weight: bold;">
+            Total da Fatura: <span id="invoiceTotalVal" style="color: var(--primary-color);">R$ 0.00</span>
+        </div>
+
+        <div class="modal-actions" id="invoiceModalActions"></div>
+    </div>
+</div>
+
 <!-- Modal: Detalhes / Nova Transferência -->
 <div class="modal-overlay" id="transferModal">
     <div class="modal" style="max-width: 650px;">
@@ -1547,7 +1596,7 @@
 
     function recalcularTotais() {
         let totalGeral = 0;
-        document.querySelectorAll('.line-row').forEach(row => {
+        document.querySelectorAll('#saleLinesBody .line-row').forEach(row => {
             const qty = parseFloat(row.querySelector('.line-qty').value) || 0;
             const price = parseFloat(row.querySelector('.line-price').value) || 0;
             const subtotal = qty * price;
@@ -1569,7 +1618,9 @@
             container.innerHTML += `<button class="btn-action" style="background-color: var(--warning-color);" onclick="reabrirComoOrcamento()">Reabrir como Orçamento</button>`;
         } else if (state === 'sale' || state === 'done') {
             if (invoice) {
-                if (isPaid) {
+                if (invoice.state === 'draft') {
+                    container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalFaturaDetalhe(${invoice.id})">Editar Fatura</button>`;
+                } else if (isPaid) {
                     container.innerHTML += `<button class="btn-action" style="background-color: var(--edit-color);" onclick="abrirModalPagamentosEntrada()">Pagamentos</button>`;
                 } else {
                     container.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalPagamento()">Pagar</button>`;
@@ -1590,7 +1641,7 @@
 
     function coletarLinhasDoFormulario() {
         const linesData = [];
-        document.querySelectorAll('.line-row').forEach(row => {
+        document.querySelectorAll('#saleLinesBody .line-row').forEach(row => {
             const prodVal = row.querySelector('.line-product').value;
             if (prodVal) {
                 linesData.push({
@@ -1699,13 +1750,13 @@
             const res = await fetch('/api/odoo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'invoice_and_post_order', order_id: currentOrderId })
+                body: JSON.stringify({ action: 'create_sale_invoice', order_id: currentOrderId })
             });
             const data = await res.json();
             if (data.success) {
-                alert('Fatura gerada e lançada com sucesso!');
-                abrirDetalhesVenda(currentOrderId);
+                fecharSaleModal();
                 buscarVendas();
+                abrirModalFaturaDetalhe(data.invoice_id);
             } else {
                 alert(data.error || 'Erro ao gerar a fatura do pedido.');
             }
@@ -1772,14 +1823,19 @@
                 return;
             }
 
-            if (data.warnings && data.warnings.length > 0) {
-                alert('Pedido confirmado, mas com avisos:\n\n- ' + data.warnings.join('\n- '));
-            } else {
-                alert('Pedido confirmado e venda lançada com sucesso! O estoque foi baixado do local selecionado.');
-            }
-
             fecharSaleModal();
             buscarVendas();
+
+            if (data.invoice_id) {
+                if (data.warnings && data.warnings.length > 0) {
+                    alert('Pedido confirmado, mas com avisos:\n\n- ' + data.warnings.join('\n- '));
+                }
+                abrirModalFaturaDetalhe(data.invoice_id);
+            } else if (data.warnings && data.warnings.length > 0) {
+                alert('Pedido confirmado, mas com avisos:\n\n- ' + data.warnings.join('\n- '));
+            } else {
+                alert('Pedido confirmado! O estoque foi baixado do local selecionado.');
+            }
         } catch (e) {
             alert('Erro de conexão ao confirmar o pedido.');
         }
@@ -1787,6 +1843,185 @@
 
     function fecharSaleModal() {
         document.getElementById('saleModal').style.display = 'none';
+    }
+
+    /* ------------------------------------------------------------
+       MODAL DE FATURA (revisão/edição do rascunho gerado pelo Pedido de Venda)
+       ------------------------------------------------------------ */
+
+    function getInvoiceStatusMeta(state) {
+        switch (state) {
+            case 'draft': return { label: 'Provisório', cls: 'status-draft' };
+            case 'posted': return { label: 'Lançado', cls: 'status-sale' };
+            case 'cancel': return { label: 'Cancelada', cls: 'status-cancel' };
+            default: return { label: state || '-', cls: 'status-draft' };
+        }
+    }
+
+    async function abrirModalFaturaDetalhe(invoiceId) {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_invoice_detail', invoice_id: invoiceId })
+            });
+            const data = await res.json();
+            if (data.error) return alert(data.error);
+
+            const invoice = data.invoice;
+            currentInvoiceId = invoice.id;
+            currentOrderTotal = invoice.amount_total ?? 0;
+
+            const isEditable = invoice.state === 'draft';
+            const isPaid = invoice.payment_state === 'paid' || invoice.payment_state === 'in_payment';
+
+            document.getElementById('invoiceModalTitle').innerText = `Fatura ${invoice.name || ''}`;
+            document.getElementById('ribbonPagoInvoiceBadge').style.display = isPaid ? 'block' : 'none';
+
+            const statusMeta = getInvoiceStatusMeta(invoice.state);
+            const badge = document.getElementById('invoiceStatusBadge');
+            badge.innerText = statusMeta.label;
+            badge.className = `status-badge ${statusMeta.cls}`;
+
+            document.getElementById('invoiceCustomerInput').value = Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : '';
+            document.getElementById('invoicePaymentTermInput').value = Array.isArray(invoice.invoice_payment_term_id) ? invoice.invoice_payment_term_id[1] : '';
+
+            const dateInput = document.getElementById('invoiceDateInput');
+            dateInput.value = invoice.invoice_date || '';
+            dateInput.disabled = !isEditable;
+
+            renderInvoiceLines(data.lines || [], isEditable);
+
+            const actions = document.getElementById('invoiceModalActions');
+            actions.innerHTML = `<button class="btn-cancel" onclick="fecharModalFaturaDetalhe()">Fechar</button>`;
+            if (isEditable) {
+                actions.innerHTML += `<button class="btn-save" onclick="salvarFatura()">Salvar</button>`;
+                actions.innerHTML += `<button class="btn-action" onclick="confirmarFatura()">Confirmar Fatura</button>`;
+            } else if (isPaid) {
+                actions.innerHTML += `<button class="btn-action" style="background-color: var(--edit-color);" onclick="abrirModalPagamentosEntrada()">Pagamentos</button>`;
+            } else if (invoice.state === 'posted') {
+                actions.innerHTML += `<button class="btn-action" style="background-color: var(--primary-color);" onclick="abrirModalPagamento()">Pagar</button>`;
+            }
+
+            document.getElementById('invoiceModal').style.display = 'flex';
+        } catch (e) {
+            alert('Erro ao carregar a fatura: ' + (e.message || 'erro desconhecido'));
+        }
+    }
+
+    function renderInvoiceLines(lines, editable) {
+        const tbody = document.getElementById('invoiceLinesBody');
+        tbody.innerHTML = '';
+
+        lines.forEach(l => {
+            const productName = Array.isArray(l.product_id) ? l.product_id[1] : '-';
+            const tr = document.createElement('tr');
+            tr.className = 'line-row';
+            tr.setAttribute('data-line-id', l.id);
+            tr.setAttribute('data-price-unit', l.price_unit);
+            tr.setAttribute('data-qty', l.quantity);
+            tr.innerHTML = `
+                <td>${productName}</td>
+                <td>${l.quantity}</td>
+                <td><input type="number" class="invoice-line-discount" value="${l.discount || 0}" min="0" max="100" step="0.01" oninput="recalcularTotalFatura()" ${editable ? '' : 'disabled'} style="width: 80px;"></td>
+                <td class="invoice-line-total">R$ ${(l.price_subtotal ?? 0).toFixed(2)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        recalcularTotalFatura();
+    }
+
+    function recalcularTotalFatura() {
+        let totalGeral = 0;
+        document.querySelectorAll('#invoiceLinesBody .line-row').forEach(row => {
+            const priceUnit = parseFloat(row.getAttribute('data-price-unit')) || 0;
+            const qty = parseFloat(row.getAttribute('data-qty')) || 0;
+            const discountInput = row.querySelector('.invoice-line-discount');
+            const discount = discountInput ? (parseFloat(discountInput.value) || 0) : 0;
+            const subtotal = qty * priceUnit * (1 - discount / 100);
+            row.querySelector('.invoice-line-total').innerText = `R$ ${subtotal.toFixed(2)}`;
+            totalGeral += subtotal;
+        });
+        document.getElementById('invoiceTotalVal').innerText = `R$ ${totalGeral.toFixed(2)}`;
+    }
+
+    function coletarDescontosFatura() {
+        const linesData = [];
+        document.querySelectorAll('#invoiceLinesBody .line-row').forEach(row => {
+            const discountInput = row.querySelector('.invoice-line-discount');
+            linesData.push({
+                id: row.getAttribute('data-line-id'),
+                discount: discountInput ? discountInput.value : 0
+            });
+        });
+        return linesData;
+    }
+
+    async function salvarFatura() {
+        try {
+            const res = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_invoice_detail',
+                    invoice_id: currentInvoiceId,
+                    invoice_date: document.getElementById('invoiceDateInput').value,
+                    lines: coletarDescontosFatura()
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Fatura salva com sucesso!');
+                abrirModalFaturaDetalhe(currentInvoiceId);
+                buscarVendas();
+            } else {
+                alert(data.error || 'Erro ao salvar a fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao salvar a fatura.');
+        }
+    }
+
+    async function confirmarFatura() {
+        try {
+            const saveRes = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_invoice_detail',
+                    invoice_id: currentInvoiceId,
+                    invoice_date: document.getElementById('invoiceDateInput').value,
+                    lines: coletarDescontosFatura()
+                })
+            });
+            const saveData = await saveRes.json();
+            if (!saveData.success) {
+                alert(saveData.error || 'Erro ao salvar a fatura antes de lançar.');
+                return;
+            }
+
+            const postRes = await fetch('/api/odoo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'post_sale_invoice', invoice_id: currentInvoiceId })
+            });
+            const postData = await postRes.json();
+
+            if (postData.success) {
+                alert('Fatura lançada com sucesso!');
+                fecharModalFaturaDetalhe();
+                buscarVendas();
+            } else {
+                alert(postData.error || 'Erro ao lançar a fatura.');
+            }
+        } catch (e) {
+            alert('Erro de conexão ao lançar a fatura.');
+        }
+    }
+
+    function fecharModalFaturaDetalhe() {
+        document.getElementById('invoiceModal').style.display = 'none';
     }
 
     /* ------------------------------------------------------------
