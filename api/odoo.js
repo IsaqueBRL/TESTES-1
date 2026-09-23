@@ -73,6 +73,29 @@ export default async function handler(req, res) {
             return types[0];
         };
 
+        // Força todas as linhas de produto de uma fatura a usarem sempre a mesma conta contábil,
+        // sem que isso precise aparecer/ser escolhido na tela do nosso site
+        const FORCED_INVOICE_ACCOUNT_CODE = "3.01.01.01.01.04";
+        let forcedAccountIdCache = null;
+        const resolveForcedAccountId = async () => {
+            if (forcedAccountIdCache) return forcedAccountIdCache;
+            const accs = await execute("account.account", "search_read", [[["code", "=", FORCED_INVOICE_ACCOUNT_CODE]]], { fields: ["id"] });
+            if (accs && accs.length > 0) {
+                forcedAccountIdCache = accs[0].id;
+                return forcedAccountIdCache;
+            }
+            return null;
+        };
+        const applyForcedAccountToInvoice = async (invoiceId) => {
+            const accountId = await resolveForcedAccountId();
+            if (!accountId) return;
+            const lines = await execute("account.move.line", "search_read", [[["move_id", "=", invoiceId], ["display_type", "=", "product"]]], { fields: ["id"] });
+            const ids = (lines || []).map(l => l.id);
+            if (ids.length > 0) {
+                await execute("account.move.line", "write", [ids, { account_id: accountId }]);
+            }
+        };
+
         // AÇÃO: BUSCAR PAGAMENTOS DA FATURA
         if (action === "get_invoice_payments") {
             const { order_id } = body;
@@ -359,13 +382,22 @@ export default async function handler(req, res) {
                     return res.status(200).json({ success: true, id: orderId, warnings: ["Pedido salvo, mas não foi possível confirmá-lo: " + e.message] });
                 }
 
-                // Tenta validar a(s) entrega(s) geradas, para baixar o estoque do local/armazém escolhido
+                // Tenta validar a(s) entrega(s) geradas, definindo a quantidade feita = quantidade pedida,
+                // para baixar de fato o estoque do local/armazém escolhido
                 try {
                     const pickings = await execute("stock.picking", "search_read", [[["sale_id", "=", orderId], ["state", "not in", ["done", "cancel"]]]], {
                         fields: ["id"]
                     });
                     for (const p of (pickings || [])) {
                         try {
+                            const moves = await execute("stock.move", "search_read", [[["picking_id", "=", p.id]]], { fields: ["id", "product_uom_qty"] });
+                            for (const mv of (moves || [])) {
+                                try {
+                                    await execute("stock.move", "write", [[mv.id], { quantity: mv.product_uom_qty }]);
+                                } catch (e2) {
+                                    await execute("stock.move", "write", [[mv.id], { quantity_done: mv.product_uom_qty }]).catch(() => {});
+                                }
+                            }
                             await execute("stock.picking", "button_validate", [[p.id]]);
                         } catch (e) {
                             warnings.push("Pedido confirmado, mas a entrega #" + p.id + " não pôde ser concluída automaticamente. Finalize-a no Odoo para baixar o estoque.");
@@ -375,35 +407,87 @@ export default async function handler(req, res) {
                     warnings.push("Não foi possível localizar a entrega gerada pelo pedido.");
                 }
 
-                // Gera e lança a fatura do pedido confirmado
+                // Gera a fatura em rascunho (equivalente a escolher "Fatura normal" e "Criar Rascunho" no Odoo).
+                // A fatura NÃO é lançada automaticamente - isso é feito depois, na tela de revisão da fatura.
                 try {
                     const invoiceIds = await execute("sale.order", "_create_invoices", [[orderId]]);
                     if (invoiceIds && invoiceIds.length > 0) {
                         invoiceId = invoiceIds[0];
-                        await execute("account.move", "action_post", [invoiceIds]);
+                        await applyForcedAccountToInvoice(invoiceId);
+                    } else {
+                        warnings.push("Pedido confirmado, mas ainda não havia nada a faturar. Use o botão \"Gerar Fatura\" no pedido depois de confirmar a entrega.");
                     }
                 } catch (e) {
-                    warnings.push("Pedido confirmado, mas não foi possível gerar/lançar a fatura automaticamente: " + e.message);
+                    warnings.push("Pedido confirmado, mas não foi possível gerar a fatura automaticamente: " + e.message);
                 }
             }
 
             return res.status(200).json({ success: true, id: orderId, invoice_id: invoiceId, warnings });
         }
 
-        // AÇÃO: GERAR E LANÇAR FATURA DE UM PEDIDO JÁ CONFIRMADO (CASO AINDA NÃO TENHA FATURA)
-        if (action === "invoice_and_post_order") {
+        // AÇÃO: GERAR A FATURA (RASCUNHO) DE UM PEDIDO JÁ CONFIRMADO (CASO AINDA NÃO TENHA FATURA)
+        if (action === "create_sale_invoice") {
             const { order_id } = body;
             if (!order_id) return res.status(400).json({ error: "ID do pedido é obrigatório." });
 
             try {
                 const invoiceIds = await execute("sale.order", "_create_invoices", [[Number(order_id)]]);
                 if (!invoiceIds || invoiceIds.length === 0) {
-                    return res.status(400).json({ error: "Não foi possível gerar a fatura para este pedido." });
+                    return res.status(400).json({ error: "Não foi possível gerar a fatura para este pedido. Se a política de faturamento for por quantidade entregue, confirme antes a entrega no Odoo." });
                 }
-                await execute("account.move", "action_post", [invoiceIds]);
+                await applyForcedAccountToInvoice(invoiceIds[0]);
                 return res.status(200).json({ success: true, invoice_id: invoiceIds[0] });
             } catch (e) {
-                return res.status(500).json({ error: "Erro ao gerar/lançar fatura: " + e.message });
+                return res.status(500).json({ error: "Erro ao gerar a fatura: " + e.message });
+            }
+        }
+
+        // AÇÃO: DETALHES DE UMA FATURA (TELA DE REVISÃO ANTES DE LANÇAR)
+        if (action === "get_invoice_detail") {
+            const { invoice_id } = body;
+            if (!invoice_id) return res.status(400).json({ error: "ID da fatura é obrigatório." });
+
+            const invoices = await execute("account.move", "search_read", [[["id", "=", Number(invoice_id)]]], {
+                fields: ["id", "name", "partner_id", "invoice_payment_term_id", "invoice_date", "state", "payment_state", "amount_total", "invoice_line_ids"]
+            });
+            if (!invoices || invoices.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
+            const invoice = invoices[0];
+
+            const lines = await execute("account.move.line", "search_read", [[["id", "in", invoice.invoice_line_ids], ["display_type", "=", "product"]]], {
+                fields: ["id", "product_id", "quantity", "discount", "price_unit", "price_subtotal", "price_total"]
+            }).catch(() => []);
+
+            return res.status(200).json({ invoice, lines: lines || [] });
+        }
+
+        // AÇÃO: ATUALIZAR DATA/DESCONTO DA FATURA (SOMENTE ENQUANTO ELA ESTIVER EM RASCUNHO)
+        if (action === "update_invoice_detail") {
+            const { invoice_id, invoice_date, lines } = body;
+            if (!invoice_id) return res.status(400).json({ error: "ID da fatura é obrigatório." });
+
+            if (invoice_date) {
+                await execute("account.move", "write", [[Number(invoice_id)], { invoice_date }]);
+            }
+
+            for (const l of (lines || [])) {
+                if (!l.id) continue;
+                await execute("account.move.line", "write", [[Number(l.id)], { discount: Number(l.discount) || 0 }]);
+            }
+
+            await applyForcedAccountToInvoice(Number(invoice_id));
+
+            return res.status(200).json({ success: true });
+        }
+
+        // AÇÃO: LANÇAR (CONFIRMAR) A FATURA
+        if (action === "post_sale_invoice") {
+            const { invoice_id } = body;
+            if (!invoice_id) return res.status(400).json({ error: "ID da fatura é obrigatório." });
+            try {
+                await execute("account.move", "action_post", [[Number(invoice_id)]]);
+                return res.status(200).json({ success: true });
+            } catch (e) {
+                return res.status(500).json({ error: "Erro ao lançar a fatura: " + e.message });
             }
         }
 
