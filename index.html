@@ -1527,9 +1527,16 @@
 
         lines.forEach(line => {
             const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
+            const prodName = Array.isArray(line.product_id) ? line.product_id[1] : '';
             let options = availableProducts.map(p => 
                 `<option value="${p.id}" ${p.id === prodId ? 'selected' : ''}>${p.display_name}</option>`
             ).join('');
+
+            // garante que o produto já lançado na linha sempre apareça selecionado,
+            // mesmo que ele não esteja (ou ainda não tenha carregado) na lista geral de produtos
+            if (prodId && !availableProducts.some(p => p.id === prodId)) {
+                options = `<option value="${prodId}" selected>${prodName}</option>` + options;
+            }
 
             tbody.innerHTML += `
                 <tr class="line-row" data-line-id="${line.id || ''}">
