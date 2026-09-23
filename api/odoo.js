@@ -56,7 +56,14 @@ export default async function handler(req, res) {
                     },
                     id: Date.now()
                 })
-            }).then(r => r.json()).then(d => d.result);
+            }).then(r => r.json()).then(d => {
+                if (d.error) {
+                    const errData = d.error.data || {};
+                    const msg = errData.message || errData.debug || d.error.message || `Erro desconhecido do Odoo ao chamar ${model}.${method}`;
+                    throw new Error(msg);
+                }
+                return d.result;
+            });
         };
 
         // Encontra o tipo de operação de "Transferência Interna" correspondente ao local de origem
@@ -93,6 +100,28 @@ export default async function handler(req, res) {
             const ids = (lines || []).map(l => l.id);
             if (ids.length > 0) {
                 await execute("account.move.line", "write", [ids, { account_id: accountId }]);
+            }
+        };
+
+        // Quando _create_invoices() não gera nenhuma fatura (sem lançar erro), busca o motivo
+        // olhando quanto já foi pedido/entregue/faturado em cada linha, para explicar na mensagem
+        const diagnosticarPedidoSemFatura = async (orderId) => {
+            try {
+                const orders = await execute("sale.order", "search_read", [[["id", "=", Number(orderId)]]], { fields: ["invoice_status"] });
+                const statusLabels = { no: "nada a faturar", to_invoice: "a faturar", invoiced: "já totalmente faturado", upselling: "faturamento adicional disponível" };
+                const orderStatus = orders && orders[0] ? (statusLabels[orders[0].invoice_status] || orders[0].invoice_status) : "desconhecido";
+
+                const lines = await execute("sale.order.line", "search_read", [[["order_id", "=", Number(orderId)], ["display_type", "=", false]]], {
+                    fields: ["product_id", "product_uom_qty", "qty_delivered", "qty_invoiced"]
+                });
+                const linesTxt = (lines || []).map(l => {
+                    const name = Array.isArray(l.product_id) ? l.product_id[1] : String(l.product_id);
+                    return `${name} (pedido: ${l.product_uom_qty}, entregue: ${l.qty_delivered}, já faturado: ${l.qty_invoiced})`;
+                }).join("; ");
+
+                return ` Status de faturamento do pedido: ${orderStatus}. ${linesTxt}`;
+            } catch (e) {
+                return "";
             }
         };
 
@@ -433,7 +462,8 @@ export default async function handler(req, res) {
             try {
                 const invoiceIds = await execute("sale.order", "_create_invoices", [[Number(order_id)]]);
                 if (!invoiceIds || invoiceIds.length === 0) {
-                    return res.status(400).json({ error: "Não foi possível gerar a fatura para este pedido. Se a política de faturamento for por quantidade entregue, confirme antes a entrega no Odoo." });
+                    const diag = await diagnosticarPedidoSemFatura(order_id);
+                    return res.status(400).json({ error: "Não foi possível gerar a fatura para este pedido." + diag });
                 }
                 await applyForcedAccountToInvoice(invoiceIds[0]);
                 return res.status(200).json({ success: true, invoice_id: invoiceIds[0] });
