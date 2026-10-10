@@ -362,7 +362,7 @@
             <button class="btn-menu" onclick="abrirTelaProdutos();">PRODUTOS</button>
             <button class="btn-menu" onclick="abrirTelaEstoque();">ESTOQUE</button>
             <button class="btn-menu" onclick="abrirTelaVendas();">VENDAS</button>
-            <button class="btn-menu" onclick="mostrarTela('financeiroSection'); buscarFinanceiro();">FINANCEIRO</button>
+            <button class="btn-menu" onclick="mostrarTela('financeiroSection'); pesquisar('financeiro', buscarFinanceiro);">FINANCEIRO</button>
             <button class="btn-menu" onclick="abrirTelaTransferencias();">TRANSFERÊNCIAS</button>
         </div>
 
@@ -385,12 +385,12 @@
         </div>
 
         <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('produtos')">
-            <select id="categoryFilter" onchange="buscarProdutos()" title="Filtrar por categoria" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:220px;cursor:pointer;">
+            <input type="text" id="searchInput" placeholder="Digite o nome do produto...">
+            <select id="categoryFilter" title="Filtrar por categoria" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:220px;cursor:pointer;">
                 <option value="">Selecione uma categoria...</option>
                 <option value="all">Todas as categorias</option>
             </select>
-            <button onclick="buscarProdutos()">Pesquisar</button>
+            <button onclick="pesquisar('produtos', buscarProdutos)">Pesquisar</button>
         </div>
 
         <div id="statusProdutos" class="status">Escolha uma categoria ou digite a descrição para ver os produtos.</div>
@@ -420,12 +420,12 @@
         </div>
 
         <div class="search-box">
-            <input type="text" id="searchEstoqueInput" placeholder="Digite o nome do produto..." oninput="debounceSearch('estoque')">
-            <select id="locationFilter" onchange="buscarEstoque()" title="Filtrar por local" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:220px;cursor:pointer;">
+            <input type="text" id="searchEstoqueInput" placeholder="Digite o nome do produto...">
+            <select id="locationFilter" title="Filtrar por local" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:220px;cursor:pointer;">
                 <option value="">Selecione um local...</option>
                 <option value="all">Todos os locais</option>
             </select>
-            <button onclick="buscarEstoque()">Pesquisar</button>
+            <button onclick="pesquisar('estoque', buscarEstoque)">Pesquisar</button>
             <button onclick="abrirModalAjusteEstoque()" style="background-color: var(--edit-color);">Ajustar Estoque</button>
         </div>
 
@@ -459,22 +459,22 @@
         </div>
 
         <div class="search-box filtros">
-            <input type="text" id="searchTransferenciasInput" placeholder="Referência..." oninput="debounceSearch('transferencias')">
-            <select id="transferOrigemFilter" class="filter-select" onchange="buscarTransferencias()" title="Filtrar por local de origem">
+            <input type="text" id="searchTransferenciasInput" placeholder="Referência...">
+            <select id="transferOrigemFilter" class="filter-select" title="Filtrar por local de origem">
                 <option value="">Origem...</option>
                 <option value="all">Todas as origens</option>
             </select>
-            <select id="transferDestinoFilter" class="filter-select" onchange="buscarTransferencias()" title="Filtrar por local de destino">
+            <select id="transferDestinoFilter" class="filter-select" title="Filtrar por local de destino">
                 <option value="">Destino...</option>
                 <option value="all">Todos os destinos</option>
             </select>
             <label class="filtro-campo">Período: de
-                <input type="date" id="transferDataDe" onchange="buscarTransferencias()" title="Data efetiva a partir de">
+                <input type="date" id="transferDataDe" title="Data efetiva a partir de">
             </label>
             <label class="filtro-campo">até
-                <input type="date" id="transferDataAte" onchange="buscarTransferencias()" title="Data efetiva até">
+                <input type="date" id="transferDataAte" title="Data efetiva até">
             </label>
-            <button onclick="buscarTransferencias()">Pesquisar</button>
+            <button onclick="pesquisar('transferencias', buscarTransferencias)">Pesquisar</button>
         </div>
 
         <div id="statusTransferencias" class="status">Escolha uma origem, um destino, um período ou digite a referência para ver as transferências.</div>
@@ -506,12 +506,12 @@
         </div>
 
         <div class="search-box">
-            <input type="text" id="searchVendasInput" placeholder="Digite o número do pedido ou cliente..." oninput="debounceSearch('vendas')">
-            <select id="vendasWarehouseFilter" onchange="buscarVendas()" title="Filtrar por local/armazém" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:200px;cursor:pointer;">
+            <input type="text" id="searchVendasInput" placeholder="Digite o número do pedido ou cliente...">
+            <select id="vendasWarehouseFilter" title="Filtrar por local/armazém" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:200px;cursor:pointer;">
                 <option value="">Selecione um local...</option>
                 <option value="all">Todos os locais</option>
             </select>
-            <select id="vendasStatusFilter" onchange="buscarVendas()" title="Filtrar por status" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:200px;cursor:pointer;">
+            <select id="vendasStatusFilter" title="Filtrar por status" style="padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:15px;background:#fff;max-width:200px;cursor:pointer;">
                 <option value="">Selecione um status...</option>
                 <option value="all">Todos os status</option>
                 <option value="draft">Orçamento</option>
@@ -519,7 +519,7 @@
                 <option value="paid">Pago</option>
                 <option value="cancel">Cancelado</option>
             </select>
-            <button onclick="buscarVendas()">Pesquisar</button>
+            <button onclick="pesquisar('vendas', buscarVendas)">Pesquisar</button>
             <button type="button" class="btn-credito" onclick="abrirModalCredito()">+ Adicionar Créditos</button>
         </div>
 
@@ -555,8 +555,8 @@
         </div>
 
         <div class="search-box filtros">
-            <input type="text" id="searchFinanceiroInput" style="flex: 0 1 260px; min-width: 160px;" placeholder="Nome da conta..." oninput="debounceSearch('financeiro')">
-            <button onclick="buscarFinanceiro()">Pesquisar</button>
+            <input type="text" id="searchFinanceiroInput" style="flex: 0 1 260px; min-width: 160px;" placeholder="Nome da conta...">
+            <button onclick="pesquisar('financeiro', buscarFinanceiro)">Pesquisar</button>
             <button class="btn-ajuste" onclick="abrirModalAjusteSaldo()" style="margin-left: auto;">± Ajustar Saldo</button>
             <button onclick="abrirModalTransferenciaContas()">+ Transferência entre Contas</button>
         </div>
@@ -593,17 +593,17 @@
 
         <h3 style="margin: 28px 0 10px; color: var(--primary-color);">Extrato de Movimentações</h3>
         <div class="search-box filtros">
-            <input type="text" id="extratoParceiro" placeholder="Parceiro..." oninput="debounceExtrato()">
-            <select id="extratoConta" class="filter-select" onchange="carregarExtratoFinanceiro()" title="Filtrar por conta">
+            <input type="text" id="extratoParceiro" placeholder="Parceiro...">
+            <select id="extratoConta" class="filter-select" title="Filtrar por conta">
                 <option value="">Conta: todas</option>
             </select>
             <label class="filtro-campo">Período: de
-                <input type="date" id="extratoDataDe" onchange="carregarExtratoFinanceiro()" title="Data a partir de">
+                <input type="date" id="extratoDataDe" title="Data a partir de">
             </label>
             <label class="filtro-campo">até
-                <input type="date" id="extratoDataAte" onchange="carregarExtratoFinanceiro()" title="Data até">
+                <input type="date" id="extratoDataAte" title="Data até">
             </label>
-            <button onclick="carregarExtratoFinanceiro()">Pesquisar</button>
+            <button onclick="pesquisar('extrato', carregarExtratoFinanceiro)">Pesquisar</button>
             <button onclick="limparFiltrosExtrato()" style="background-color: #777;">Limpar</button>
         </div>
         <div id="statusExtrato" class="status">Escolha um parceiro, uma conta ou um período para ver as movimentações.</div>
@@ -1447,16 +1447,40 @@
         if (idTela === 'homeSection') telaTarget.classList.add('active-section');
     }
 
-    function debounceSearch(tipo) {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-            if (tipo === 'produtos') buscarProdutos();
-            if (tipo === 'estoque') buscarEstoque();
-            if (tipo === 'vendas') buscarVendas();
-            if (tipo === 'financeiro') buscarFinanceiro();
-            if (tipo === 'transferencias') buscarTransferencias();
-        }, 300);
+    /* ------------------------------------------------------------
+       FILTROS: a busca só roda quando o usuário clica em "Pesquisar" (ou aperta Enter num campo do filtro).
+       O que está digitado/selecionado só vale depois disso; as atualizações automáticas da lista
+       (ex.: depois de salvar/pagar) reaproveitam o último filtro aplicado.
+       ------------------------------------------------------------ */
+    const FILTROS_TELA = {
+        produtos: ['searchInput', 'categoryFilter'],
+        estoque: ['searchEstoqueInput', 'locationFilter'],
+        vendas: ['searchVendasInput', 'vendasWarehouseFilter', 'vendasStatusFilter'],
+        transferencias: ['searchTransferenciasInput', 'transferOrigemFilter', 'transferDestinoFilter', 'transferDataDe', 'transferDataAte'],
+        financeiro: ['searchFinanceiroInput'],
+        extrato: ['extratoParceiro', 'extratoConta', 'extratoDataDe', 'extratoDataAte']
+    };
+    const filtrosAplicados = {};
+
+    function lerFiltro(id) {
+        return (id in filtrosAplicados) ? filtrosAplicados[id] : document.getElementById(id).value;
     }
+
+    function pesquisar(tela, buscaFn) {
+        (FILTROS_TELA[tela] || []).forEach(id => { filtrosAplicados[id] = document.getElementById(id).value; });
+        buscaFn();
+    }
+
+    // Enter dentro de um campo da barra de filtros = clicar em "Pesquisar"
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const alvo = e.target;
+        if (!alvo || !(alvo.tagName === 'INPUT' || alvo.tagName === 'SELECT')) return;
+        const barra = alvo.closest && alvo.closest('.search-box');
+        if (!barra) return;
+        const btn = Array.from(barra.querySelectorAll('button')).find(b => b.textContent.trim() === 'Pesquisar');
+        if (btn) { e.preventDefault(); btn.click(); }
+    });
 
     /* FILTRO DE CATEGORIAS (só categorias que têm produtos de venda) */
     async function carregarCategoriasProdutos() {
@@ -1484,15 +1508,15 @@
         document.getElementById('searchInput').value = '';
         document.getElementById('categoryFilter').value = '';
         carregarCategoriasProdutos();
-        buscarProdutos(); // sem filtro, só mostra a orientação
+        pesquisar('produtos', buscarProdutos); // sem filtro, só mostra a orientação
     }
 
     let produtosReqId = 0;
 
     /* 1. BUSCAR PRODUTOS (só busca no Odoo quando há categoria escolhida e/ou descrição digitada) */
     async function buscarProdutos() {
-        const query = document.getElementById("searchInput").value.trim();
-        const categoriaEscolhida = document.getElementById("categoryFilter").value;
+        const query = lerFiltro("searchInput").trim();
+        const categoriaEscolhida = lerFiltro("categoryFilter");
         const category_id = categoriaEscolhida === 'all' ? '' : categoriaEscolhida;
         const status = document.getElementById("statusProdutos");
         const results = document.getElementById("resultsProdutos");
@@ -1663,7 +1687,7 @@
         document.getElementById('searchEstoqueInput').value = '';
         document.getElementById('locationFilter').value = '';
         carregarLocaisEstoque();
-        buscarEstoque(); // sem filtro, só mostra a orientação
+        pesquisar('estoque', buscarEstoque); // sem filtro, só mostra a orientação
     }
 
     /* AJUSTE DE ESTOQUE */
@@ -1803,8 +1827,8 @@
     let estoqueReqId = 0;
 
     async function buscarEstoque() {
-        const query = document.getElementById("searchEstoqueInput").value.trim();
-        const localEscolhido = document.getElementById("locationFilter").value;
+        const query = lerFiltro("searchEstoqueInput").trim();
+        const localEscolhido = lerFiltro("locationFilter");
         const location_id = localEscolhido === 'all' ? '' : localEscolhido;
         const status = document.getElementById("statusEstoque");
         const results = document.getElementById("resultsEstoque");
@@ -1938,7 +1962,7 @@
         document.getElementById('vendasWarehouseFilter').value = '';
         document.getElementById('vendasStatusFilter').value = '';
         carregarFiltroArmazensVendas();
-        buscarVendas(); // sem filtro, só mostra a orientação
+        pesquisar('vendas', buscarVendas); // sem filtro, só mostra a orientação
     }
 
     let vendasReqId = 0;
@@ -1980,11 +2004,11 @@
     })();
 
     async function buscarVendas() {
-        const query = document.getElementById("searchVendasInput").value.trim();
+        const query = lerFiltro("searchVendasInput").trim();
         const status = document.getElementById("statusVendas");
         const results = document.getElementById("resultsVendas");
-        const localEscolhido = document.getElementById("vendasWarehouseFilter").value;
-        const statusEscolhido = document.getElementById("vendasStatusFilter").value;
+        const localEscolhido = lerFiltro("vendasWarehouseFilter");
+        const statusEscolhido = lerFiltro("vendasStatusFilter");
         const warehouse_id = localEscolhido === 'all' ? '' : localEscolhido;
         const order_status = statusEscolhido === 'all' ? '' : statusEscolhido;
         const reqId = ++vendasReqId;
@@ -2190,18 +2214,12 @@
         }
     }
 
-    let extratoTimer = null;
-    function debounceExtrato() {
-        clearTimeout(extratoTimer);
-        extratoTimer = setTimeout(carregarExtratoFinanceiro, 400);
-    }
-
     function limparFiltrosExtrato() {
         document.getElementById('extratoParceiro').value = '';
         document.getElementById('extratoConta').value = '';
         document.getElementById('extratoDataDe').value = '';
         document.getElementById('extratoDataAte').value = '';
-        carregarExtratoFinanceiro();
+        pesquisar('extrato', carregarExtratoFinanceiro);
     }
 
     // Extrato: lançamentos de diário que movimentam as contas "Banco e caixa"
@@ -2216,8 +2234,8 @@
         const selConta = document.getElementById('extratoConta');
 
         // Só mostra o extrato depois que o usuário aplicar algum filtro
-        if (!document.getElementById('extratoParceiro').value.trim() && !selConta.value &&
-            !document.getElementById('extratoDataDe').value && !document.getElementById('extratoDataAte').value) {
+        if (!lerFiltro('extratoParceiro').trim() && !lerFiltro('extratoConta') &&
+            !lerFiltro('extratoDataDe') && !lerFiltro('extratoDataAte')) {
             status.innerText = 'Escolha um parceiro, uma conta ou um período para ver as movimentações.';
             results.innerHTML = '';
             return;
@@ -2226,10 +2244,10 @@
         status.innerText = 'Carregando extrato...';
         const payload = {
             action: 'get_account_statement',
-            partner: document.getElementById('extratoParceiro').value.trim(),
-            account_id: selConta.value,
-            date_from: document.getElementById('extratoDataDe').value,
-            date_to: document.getElementById('extratoDataAte').value
+            partner: lerFiltro('extratoParceiro').trim(),
+            account_id: lerFiltro('extratoConta'),
+            date_from: lerFiltro('extratoDataDe'),
+            date_to: lerFiltro('extratoDataAte')
         };
 
         try {
@@ -2318,7 +2336,7 @@
     }
 
     async function buscarFinanceiro() {
-        const query = document.getElementById("searchFinanceiroInput").value.trim();
+        const query = lerFiltro("searchFinanceiroInput").trim();
         if (!query) { carregarExtratoFinanceiro(); carregarResumoContas(); }
         const status = document.getElementById("statusFinanceiro");
         const results = document.getElementById("resultsFinanceiro");
@@ -3976,7 +3994,7 @@
             { id: 'transferOrigemFilter', placeholder: 'Origem...', todos: 'Todas as origens' },
             { id: 'transferDestinoFilter', placeholder: 'Destino...', todos: 'Todos os destinos' }
         ]);
-        buscarTransferencias(); // sem filtro, só mostra a orientação
+        pesquisar('transferencias', buscarTransferencias); // sem filtro, só mostra a orientação
     }
 
     // Data local do campo (YYYY-MM-DD) -> formato UTC do Odoo (YYYY-MM-DD HH:MM:SS)
@@ -3990,11 +4008,11 @@
     let transferenciasReqId = 0;
 
     async function buscarTransferencias() {
-        const query = document.getElementById("searchTransferenciasInput").value.trim();
-        const origemEscolhida = document.getElementById("transferOrigemFilter").value;
-        const destinoEscolhido = document.getElementById("transferDestinoFilter").value;
-        const dataDe = document.getElementById("transferDataDe").value;
-        const dataAte = document.getElementById("transferDataAte").value;
+        const query = lerFiltro("searchTransferenciasInput").trim();
+        const origemEscolhida = lerFiltro("transferOrigemFilter");
+        const destinoEscolhido = lerFiltro("transferDestinoFilter");
+        const dataDe = lerFiltro("transferDataDe");
+        const dataAte = lerFiltro("transferDataAte");
         const status = document.getElementById("statusTransferencias");
         const results = document.getElementById("resultsTransferencias");
         const reqId = ++transferenciasReqId;
