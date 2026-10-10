@@ -778,15 +778,34 @@
 </div>
 
 <!-- Modal: Registrar Pagamento -->
+<style>
+.pgl { display: grid; grid-template-columns: 1fr 120px 36px; gap: 8px; align-items: center; margin-top: 6px; }
+.pgl select, .pgl input { margin: 0; }
+.pgl .pg-x { height: 38px; border: none; border-radius: 8px; background: #fde4e4; color: #c62828; font-size: 18px; cursor: pointer; }
+.pgl .pg-x[hidden] { visibility: hidden; display: block; }
+.btn-add-pg { margin-top: 8px; background: none; border: 1px dashed #714B67; color: #714B67; border-radius: 8px; padding: 8px; width: 100%; cursor: pointer; font-weight: 600; }
+.pg-rest { margin-top: 10px; font-size: 14px; font-weight: 700; text-align: right; color: #555; }
+.pg-rest.ok { color: #2e7d32; } .pg-rest.warn { color: #c62828; } .pg-rest.info { color: #1565c0; }
+.pg-cred { background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.pg-cred .pg-chk { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #2e7d32; cursor: pointer; margin: 0; }
+.pg-cred .pg-chk input { width: auto; margin: 0; }
+.pg-cred .pg-credval { display: none; margin-top: 8px; grid-template-columns: 1fr 120px; gap: 8px; align-items: center; font-size: 13px; color: #555; }
+.pg-cred.on .pg-credval { display: grid; }
+.pg-cred .pg-credval input { margin: 0; }
+</style>
 <div class="modal-overlay" id="paymentModal" style="z-index: 1100;">
-    <div class="modal" style="max-width: 420px;">
+    <div class="modal" style="max-width: 460px;">
         <h2>Pagar Fatura</h2>
-        
-        <label>Conta</label>
-        <select id="payJournalSelect"></select>
+        <div id="pgTotalInfo" style="font-size:14px;color:#555;margin-bottom:8px;"></div>
 
-        <label>Valor</label>
-        <input type="number" id="payAmountInput" step="0.01">
+        <div class="pg-cred" id="pgCredBox" style="display:none;">
+            <label class="pg-chk"><input type="checkbox" id="pgCredChk" onchange="pgToggleCred()"> <span id="pgCredLabel"></span></label>
+            <div class="pg-credval"><span>Valor do crédito a usar</span><input type="number" id="pgCredInput" step="0.01" min="0" oninput="pgCredEditou()"></div>
+        </div>
+
+        <div id="pgLinhas"></div>
+        <button type="button" class="btn-add-pg" onclick="addLinhaPagamento()">+ Adicionar forma de pagamento</button>
+        <div class="pg-rest" id="pgRest"></div>
 
         <label>Data de Pagamento</label>
         <input type="date" id="payDateInput">
@@ -2683,6 +2702,80 @@
         }
     }
 
+    let pagTotal = 0, pagCredDisp = 0, pagLinhas = [];
+    const pgNum = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : Math.round(n * 100) / 100; };
+    const pgFmt = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function pgOpcoes(sel) {
+        const js = availableJournals || [];
+        if (!js.length) return '<option value="">Nenhuma conta disponível</option>';
+        return js.map(j => j.has_journal === false
+            ? `<option value="" disabled>${j.name} (sem diário no Odoo)</option>`
+            : `<option value="${j.id}" ${String(j.id) === String(sel) ? 'selected' : ''}>${j.name}</option>`).join('');
+    }
+    function pgCredUsar() {
+        if (!document.getElementById('pgCredChk').checked) return 0;
+        return Math.min(pgNum(document.getElementById('pgCredInput').value), pagCredDisp, pagTotal);
+    }
+    function pgRecalcAuto() {
+        // a primeira linha "automática" completa o que falta
+        const outras = pagLinhas.reduce((t, l, i) => t + (l.auto ? 0 : l.valor), 0);
+        const falta = Math.max(0, Math.round((pagTotal - pgCredUsar() - outras) * 100) / 100);
+        const auto = pagLinhas.find(l => l.auto);
+        if (auto) auto.valor = falta;
+    }
+    function pgRender() {
+        pgRecalcAuto();
+        const box = document.getElementById('pgLinhas');
+        box.innerHTML = pagLinhas.map((l, i) => `
+            <div class="pgl">
+                <select onchange="pagLinhas[${i}].conta=this.value">${pgOpcoes(l.conta)}</select>
+                <input type="number" step="0.01" min="0" value="${l.valor}" oninput="pgEditou(${i}, this.value)">
+                <button type="button" class="pg-x" onclick="removerLinhaPagamento(${i})" ${pagLinhas.length < 2 ? 'hidden' : ''}>×</button>
+            </div>`).join('');
+        pgStatus();
+    }
+    function pgStatus() {
+        const cred = pgCredUsar();
+        const pago = pagLinhas.reduce((t, l) => t + l.valor, 0);
+        const dif = Math.round((pagTotal - cred - pago) * 100) / 100;
+        const el = document.getElementById('pgRest');
+        if (pagTotal > 0 && cred >= pagTotal - 0.004) { el.className = 'pg-rest ok'; el.textContent = 'Venda paga com o crédito do cliente ✓'; }
+        else if (dif < -0.004) { el.className = 'pg-rest info'; el.textContent = 'Excedente de ' + pgFmt(-dif) + ' vira crédito do cliente'; }
+        else if (dif > 0.004) { el.className = 'pg-rest warn'; el.textContent = 'Restante: ' + pgFmt(dif) + ' (ficará em aberto)'; }
+        else { el.className = 'pg-rest ok'; el.textContent = 'Total a pagar: ' + pgFmt(pagTotal) + ' ✓'; }
+    }
+    function pgEditou(i, v) {
+        pagLinhas[i].valor = pgNum(v);
+        pagLinhas[i].auto = false;
+        // garante que ainda exista uma linha automática (a última não editada)
+        if (!pagLinhas.some(l => l.auto)) { /* todas manuais: mostra só o status */ }
+        pgStatus();
+    }
+    function pgToggleCred() {
+        const on = document.getElementById('pgCredChk').checked;
+        document.getElementById('pgCredBox').classList.toggle('on', on);
+        if (on) document.getElementById('pgCredInput').value = Math.min(pagCredDisp, pagTotal);
+        pagLinhas.forEach((l, i) => l.auto = (i === 0));
+        pgRender();
+    }
+    function pgCredEditou() {
+        const el = document.getElementById('pgCredInput');
+        if (pgNum(el.value) > Math.min(pagCredDisp, pagTotal)) el.value = Math.min(pagCredDisp, pagTotal);
+        pagLinhas.forEach((l, i) => l.auto = (i === 0));
+        pgRender();
+    }
+    function addLinhaPagamento() {
+        const primeira = (availableJournals || []).find(j => j.has_journal !== false);
+        pagLinhas.push({ conta: primeira ? String(primeira.id) : '', valor: 0, auto: false });
+        pgRender();
+    }
+    function removerLinhaPagamento(i) {
+        if (pagLinhas.length < 2) return;
+        pagLinhas.splice(i, 1);
+        if (!pagLinhas.some(l => l.auto)) pagLinhas[0].auto = true;
+        pgRender();
+    }
+
     async function abrirModalPagamento() {
         const btnSalvar = document.getElementById('btnSalvarAlteracoes');
         if (btnSalvar && btnSalvar.style.display !== 'none') {
@@ -2690,25 +2783,30 @@
             return;
         }
         try {
-            const journals = await carregarDiarios();
-            const selectJournal = document.getElementById('payJournalSelect');
-            selectJournal.innerHTML = '';
-
-            if (journals.length > 0) {
-                journals.forEach(j => {
-                    selectJournal.innerHTML += j.has_journal === false
-                        ? `<option value="" disabled>${j.name} (sem diário no Odoo)</option>`
-                        : `<option value="${j.id}">${j.name}</option>`;
-                });
-                const firstUsable = journals.find(j => j.has_journal !== false);
-                if (firstUsable) selectJournal.value = String(firstUsable.id);
-            } else {
-                selectJournal.innerHTML = '<option value="">Nenhuma conta/diário disponível</option>';
-            }
-
-            document.getElementById('payAmountInput').value = currentOrderTotal;
-            document.getElementById('payDateInput').value = new Date().toISOString().split('T')[0];
+            await carregarDiarios();
+            const primeira = (availableJournals || []).find(j => j.has_journal !== false);
+            pagTotal = pgNum(currentOrderTotal);
+            pagCredDisp = 0;
+            pagLinhas = [{ conta: primeira ? String(primeira.id) : '', valor: pagTotal, auto: true }];
+            document.getElementById('pgTotalInfo').textContent = 'Total da venda: ' + pgFmt(pagTotal);
+            document.getElementById('payDateInput').value = hojeISO();
+            document.getElementById('pgCredChk').checked = false;
+            document.getElementById('pgCredBox').classList.remove('on');
+            document.getElementById('pgCredBox').style.display = 'none';
+            pgRender();
             document.getElementById('paymentModal').style.display = 'flex';
+
+            // crédito do cliente (não bloqueia o pop-up se falhar)
+            try {
+                const r = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'get_customer_credit', invoice_id: currentInvoiceId }) });
+                const d = await r.json();
+                pagCredDisp = Number(d.credit || 0);
+                if (pagCredDisp > 0.004) {
+                    document.getElementById('pgCredLabel').textContent = 'Usar crédito do cliente (disponível ' + pgFmt(pagCredDisp) + ')';
+                    document.getElementById('pgCredBox').style.display = 'block';
+                }
+            } catch (e) { /* sem crédito */ }
         } catch (e) {
             alert('Erro ao carregar diários/contas de pagamento.');
         }
@@ -2913,47 +3011,53 @@
     }
 
     async function confirmarPagamentoOdoo() {
-        const journal_id = document.getElementById('payJournalSelect').value;
-        const amount = document.getElementById('payAmountInput').value;
         const payment_date = document.getElementById('payDateInput').value;
         const btn = document.getElementById('btnConfirmPay');
+        const cred = pgCredUsar();
+        const linhas = pagLinhas.filter(l => l.valor > 0.004);
 
-        if (!journal_id || !amount) {
-            return alert("Por favor preencha todos os campos.");
-        }
+        // valida tudo antes de mexer em qualquer coisa
+        if (linhas.some(l => !l.conta)) return alert('Escolha a conta de cada forma de pagamento.');
+        if (cred <= 0.004 && linhas.length === 0) return alert('Informe o valor do pagamento.');
+        if (!payment_date) return alert('Informe a data do pagamento.');
 
-        btn.innerText = "Processando...";
+        btn.innerText = 'Processando...';
         btn.disabled = true;
-
+        const post = async (body) => {
+            const res = await fetch('/api/odoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            return res.json();
+        };
+        let feitos = 0, excedenteTotal = 0;
         try {
-            const res = await fetch('/api/odoo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'register_payment',
-                    order_id: currentInvoiceId,
-                    journal_id,
-                    amount,
-                    payment_date,
-                    invoice_date: hojeISO()
-                })
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                alert('Pagamento registrado com sucesso!');
-                fecharModalPagamento();
-                abrirDetalhesVenda(currentOrderId);
-                buscarVendas();
-            } else {
-                alert(data.error || 'Erro ao registrar pagamento.');
-                abrirDetalhesVenda(currentOrderId);
+            if (cred > 0.004) {
+                const d = await post({ action: 'apply_customer_credit', invoice_id: currentInvoiceId, amount: cred, invoice_date: hojeISO() });
+                if (!d.success) { alert(d.error || 'Erro ao usar o crédito do cliente.'); return; }
+                feitos++;
             }
+            for (let i = 0; i < linhas.length; i++) {
+                const l = linhas[i];
+                const d = await post({ action: 'register_payment', order_id: currentInvoiceId, journal_id: l.conta, amount: l.valor, payment_date, invoice_date: hojeISO() });
+                if (!d.success) {
+                    alert((d.error || 'Erro ao registrar pagamento.') + (feitos ? '\n\nOs pagamentos anteriores (' + feitos + ') já foram registrados.' : ''));
+                    fecharModalPagamento();
+                    abrirDetalhesVenda(currentOrderId);
+                    buscarVendas();
+                    return;
+                }
+                feitos++;
+                excedenteTotal += Number(d.excess || 0);
+            }
+            let msg = 'Pagamento registrado com sucesso!';
+            if (excedenteTotal > 0.004) msg += '\n\n' + pgFmt(excedenteTotal) + ' viraram crédito do cliente.';
+            alert(msg);
+            fecharModalPagamento();
+            abrirDetalhesVenda(currentOrderId);
+            buscarVendas();
         } catch (e) {
-            alert('Erro ao conectar com a API do Odoo.');
+            alert('Erro ao conectar com a API do Odoo.' + (feitos ? '\n\nAlguns pagamentos (' + feitos + ') já foram registrados; confira a venda.' : ''));
+            if (feitos) { fecharModalPagamento(); abrirDetalhesVenda(currentOrderId); buscarVendas(); }
         } finally {
-            btn.innerText = "Criar pagamento";
+            btn.innerText = 'Criar pagamento';
             btn.disabled = false;
         }
     }
@@ -3295,6 +3399,9 @@
                 let msg = 'Pedido cancelado com sucesso!';
                 if (data.devolvidos && data.devolvidos.length > 0) {
                     msg += '\n\nItens devolvidos ao estoque de origem (' + data.devolvidos.join(', ') + ').';
+                }
+                if (data.credito_devolvido > 0.004) {
+                    msg += '\n\n' + pgFmt(data.credito_devolvido) + ' voltaram para o cliente como crédito.';
                 }
                 if (data.warnings && data.warnings.length > 0) {
                     msg += '\n\nAtenção:\n- ' + data.warnings.join('\n- ');
