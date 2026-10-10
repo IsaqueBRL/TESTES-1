@@ -594,8 +594,8 @@
         <h3 style="margin: 28px 0 10px; color: var(--primary-color);">Extrato de Movimentações</h3>
         <div class="search-box filtros">
             <input type="text" id="extratoParceiro" placeholder="Parceiro..." oninput="debounceExtrato()">
-            <select id="extratoConta" class="filter-select" onchange="carregarExtratoFinanceiro()" title="Filtrar por conta / diário">
-                <option value="">Conta / Diário: todas</option>
+            <select id="extratoConta" class="filter-select" onchange="carregarExtratoFinanceiro()" title="Filtrar por conta">
+                <option value="">Conta: todas</option>
             </select>
             <label class="filtro-campo">Período: de
                 <input type="date" id="extratoDataDe" onchange="carregarExtratoFinanceiro()" title="Data a partir de">
@@ -613,8 +613,9 @@
                     <tr>
                         <th style="width: 120px;">DATA</th>
                         <th>PARCEIRO</th>
-                        <th>DIÁRIO</th>
-                        <th style="width: 140px; text-align: right;">TOTAL</th>
+                        <th>CONTA</th>
+                        <th>REFERÊNCIA</th>
+                        <th style="width: 140px; text-align: right;">VALOR</th>
                     </tr>
                 </thead>
                 <tbody id="resultsExtrato"></tbody>
@@ -2243,7 +2244,7 @@
             // Opções do filtro de conta: contas "Banco e caixa" (montadas uma vez, mantendo a escolha atual)
             if (Array.isArray(data.accounts) && selConta.options.length <= 1 && data.accounts.length > 0) {
                 const atual = selConta.value;
-                selConta.innerHTML = '<option value="">Conta / Diário: todas</option>' +
+                selConta.innerHTML = '<option value="">Conta: todas</option>' +
                     data.accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
                 selConta.value = atual;
             }
@@ -2255,20 +2256,34 @@
             }
 
             status.innerText = data.result.length >= (data.limit || 200)
-                ? `Mostrando os ${data.result.length} lançamentos mais recentes:`
-                : `${data.result.length} lançamento(s) encontrado(s):`;
+                ? `Mostrando os ${data.result.length} itens mais recentes:`
+                : `${data.result.length} item(ns) lançado(s) encontrado(s):`;
 
             results.innerHTML = data.result.map(m => {
                 const [y, mo, d] = (m.date || '').split('-');
                 const dataBr = y ? `${d}/${mo}/${y}` : '-';
+                const fmtV = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                // Débito = entrada (verde) | Crédito = saída (vermelho)
+                let valorHtml;
+                if (m.debit > 0 && m.credit > 0) {
+                    const liq = Math.round((m.debit - m.credit) * 100) / 100;
+                    valorHtml = liq >= 0
+                        ? `<span style="color: var(--success-color);">+ R$ ${fmtV(liq)}</span>`
+                        : `<span style="color: var(--danger-color);">- R$ ${fmtV(-liq)}</span>`;
+                } else if (m.debit > 0) {
+                    valorHtml = `<span style="color: var(--success-color);">+ R$ ${fmtV(m.debit)}</span>`;
+                } else if (m.credit > 0) {
+                    valorHtml = `<span style="color: var(--danger-color);">- R$ ${fmtV(m.credit)}</span>`;
+                } else {
+                    valorHtml = `<span style="color: #888;">R$ 0,00</span>`;
+                }
                 return `
                     <tr>
                         <td data-sort="${esc(m.date)}">${dataBr}</td>
                         <td>${esc(m.partner) || '-'}</td>
-                        <td>${esc(m.journal) || '-'}</td>
-                        <td style="text-align: right; font-weight: bold;">
-                            R$ ${Number(m.total).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
+                        <td>${esc(m.account) || '-'}</td>
+                        <td>${esc(m.reference) || '-'}</td>
+                        <td style="text-align: right; font-weight: bold;">${valorHtml}</td>
                     </tr>`;
             }).join('');
         } catch (e) {
@@ -2334,7 +2349,7 @@
             const selContaExtrato = document.getElementById('extratoConta');
             if (!query && selContaExtrato.options.length <= 1) {
                 const atual = selContaExtrato.value;
-                selContaExtrato.innerHTML = '<option value="">Conta / Diário: todas</option>' +
+                selContaExtrato.innerHTML = '<option value="">Conta: todas</option>' +
                     data.result.map(a => `<option value="${a.id}">${String(a.name).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))}</option>`).join('');
                 selContaExtrato.value = atual;
             }
