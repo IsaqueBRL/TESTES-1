@@ -756,9 +756,136 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: accounts });
         }
 
+        // ---- Crédito do cliente: pagamentos/créditos em aberto, sem fatura ligada ----
+        const r2c = n => Math.round(Number(n) * 100) / 100;
+        const LINHA_RECEBER_C = ["account_id.account_type", "=", "asset_receivable"];
+        const linhasDeCreditoC = async (partnerId, exceptMoveId) => {
+            const dom = [["partner_id", "child_of", Number(partnerId)], LINHA_RECEBER_C, ["parent_state", "=", "posted"], ["amount_residual", "<", 0]];
+            if (exceptMoveId) dom.push(["move_id", "!=", Number(exceptMoveId)]);
+            return (await execute("account.move.line", "search_read", [dom], { fields: ["id", "amount_residual", "date"], order: "date asc, id asc" })) || [];
+        };
+        const saldoCredito = async (partnerId, exceptMoveId) => {
+            const linhas = await linhasDeCreditoC(partnerId, exceptMoveId);
+            return Math.max(0, r2c(linhas.reduce((t, l) => t - Number(l.amount_residual), 0)));
+        };
+
+        // Cliente (cadastro comercial) e saldo da fatura
+        const clienteDaFatura = async (invoiceId) => {
+            const f = await execute("account.move", "read", [[Number(invoiceId)]], { fields: ["partner_id", "commercial_partner_id", "name", "state", "amount_residual"] });
+            const inv = f && f[0];
+            if (!inv) return null;
+            const pid = Array.isArray(inv.commercial_partner_id) ? inv.commercial_partner_id[0]
+                : (Array.isArray(inv.partner_id) ? inv.partner_id[0] : null);
+            return { inv, partnerId: pid, payerId: Array.isArray(inv.partner_id) ? inv.partner_id[0] : pid };
+        };
+
+        // Fatura provisória só é lançada no pagamento: sincroniza com o pedido e lança. Devolve true se lançou agora.
+        const lancarFaturaSeProvisoria = async (invoiceId, invoiceDate) => {
+            const fat = await execute("account.move", "read", [[invoiceId]], { fields: ["state"] });
+            if (!fat || fat.length === 0) { const err = new Error("Fatura não encontrada."); err.status = 404; throw err; }
+            if (fat[0].state === "cancel") { const err = new Error("Esta fatura está cancelada."); err.status = 400; throw err; }
+            if (fat[0].state !== "draft") return false;
+            const peds = await execute("sale.order", "search_read", [[["invoice_ids", "in", [invoiceId]]]], { fields: ["id"] });
+            for (const p of (peds || [])) await sincronizarFaturaProvisoriaComPedido(p.id);
+            if (invoiceDate) await execute("account.move", "write", [[invoiceId], { invoice_date: invoiceDate }]);
+            await execute("account.move", "action_post", [[invoiceId]]);
+            return true;
+        };
+
+        // Escreve a observação no campo "Referência" do lançamento no diário e no campo "Anotação" do pagamento
+        // (os nomes técnicos mudam entre versões do Odoo, então procura pelo rótulo e tenta cada campo com segurança)
+        const anotarPagamento = async (paymentId, texto) => {
+            try {
+                const pgInfo = await execute("account.payment", "read", [[paymentId]], { fields: ["move_id"] });
+                const mvId = pgInfo && pgInfo[0] && Array.isArray(pgInfo[0].move_id) ? pgInfo[0].move_id[0] : null;
+                if (mvId) { try { await execute("account.move", "write", [[mvId], { ref: texto }]); } catch (e) { /* melhor esforço */ } }
+                const defs = await cached("fields_text_account.payment", TTL_LONG, () => execute("account.payment", "fields_get", [], { attributes: ["string", "type", "readonly"] }));
+                const candidatos = Object.keys(defs || {}).filter(k => {
+                    const d = defs[k];
+                    if (!d || !["char", "text"].includes(d.type)) return false;
+                    return k === "memo" || k === "ref" || /^(anota[cç][aã]o|memo)$/i.test(String(d.string || "").trim());
+                });
+                for (const campo of candidatos) {
+                    try { await execute("account.payment", "write", [[paymentId], { [campo]: texto }]); } catch (e) { /* campo calculado/somente leitura */ }
+                }
+            } catch (e) { /* a observação é complementar: não impede o lançamento */ }
+        };
+
+        // AÇÃO: CRÉDITO DISPONÍVEL DO CLIENTE (pela fatura ou direto pelo cliente)
+        if (action === "get_customer_credit") {
+            const { invoice_id, partner_id } = body;
+            if (invoice_id) {
+                const c = await clienteDaFatura(invoice_id);
+                if (!c || !c.partnerId) return res.status(200).json({ credit: 0 });
+                return res.status(200).json({ credit: await saldoCredito(c.partnerId, invoice_id), partner_id: c.partnerId });
+            }
+            if (!partner_id) return res.status(200).json({ credit: 0 });
+            return res.status(200).json({ credit: await saldoCredito(partner_id) });
+        }
+
+        // AÇÃO: USAR CRÉDITO DO CLIENTE NA FATURA (valor escolhido pelo usuário)
+        if (action === "apply_customer_credit") {
+            const { invoice_id, amount, invoice_date } = body;
+            const X = r2c(amount);
+            if (!invoice_id || !(X > 0)) return res.status(400).json({ error: "Informe o valor do crédito a usar." });
+            const invoiceId = Number(invoice_id);
+
+            let lancadaAgora = false;
+            try {
+                lancadaAgora = await lancarFaturaSeProvisoria(invoiceId, invoice_date);
+            } catch (e) {
+                return res.status(e.status || 400).json({ error: e.status ? e.message : "Não foi possível lançar a fatura para usar o crédito: " + e.message });
+            }
+            const desfazerLancamento = async () => { if (lancadaAgora) { try { await execute("account.move", "button_draft", [[invoiceId]]); } catch (e2) { /* melhor esforço */ } } };
+
+            const c = await clienteDaFatura(invoiceId);
+            if (!c || c.inv.state !== "posted") { await desfazerLancamento(); return res.status(400).json({ error: "A fatura não está lançada." }); }
+
+            const residual = r2c(c.inv.amount_residual);
+            if (X > residual + 0.005) { await desfazerLancamento(); return res.status(400).json({ error: "O crédito informado é maior que o saldo da fatura (" + residual.toFixed(2).replace(".", ",") + ")." }); }
+
+            const creditos = await linhasDeCreditoC(c.partnerId, invoiceId);
+            const disponivel = r2c(creditos.reduce((t, l) => t - Number(l.amount_residual), 0));
+            if (X > disponivel + 0.005) { await desfazerLancamento(); return res.status(400).json({ error: "O cliente só tem " + disponivel.toFixed(2).replace(".", ",") + " de crédito." }); }
+
+            const linhaFat = await execute("account.move.line", "search_read", [[["move_id", "=", invoiceId], LINHA_RECEBER_C, ["amount_residual", ">", 0]]], { fields: ["id", "amount_residual"], limit: 1 });
+            if (!linhaFat || linhaFat.length === 0) { await desfazerLancamento(); return res.status(400).json({ error: "A fatura não tem saldo a receber." }); }
+            const fatId = linhaFat[0].id;
+
+            let faltaUsar = X, saldoFat = residual, aplicado = 0;
+            try {
+                for (const cl of creditos) {
+                    if (faltaUsar <= 0.004 || saldoFat <= 0.004) break;
+                    const credLinha = r2c(-cl.amount_residual);
+                    const natural = r2c(Math.min(credLinha, saldoFat));      // o que a conciliação normal do Odoo usaria
+                    const a = r2c(Math.min(faltaUsar, natural));
+                    if (a <= 0.004) continue;
+                    if (Math.abs(a - natural) < 0.005) {
+                        // usa a linha inteira (ou até quitar a fatura): conciliação padrão do Odoo
+                        await execute("account.move.line", "reconcile", [[fatId, cl.id]]);
+                    } else {
+                        // usa só uma parte do crédito: conciliação parcial com o valor escolhido
+                        await execute("account.partial.reconcile", "create", [{
+                            debit_move_id: fatId, credit_move_id: cl.id,
+                            amount: a, debit_amount_currency: a, credit_amount_currency: a
+                        }]);
+                    }
+                    aplicado = r2c(aplicado + a); faltaUsar = r2c(faltaUsar - a); saldoFat = r2c(saldoFat - a);
+                }
+            } catch (e) {
+                if (aplicado <= 0) await desfazerLancamento();
+                return res.status(500).json({ error: "Não foi possível usar o crédito: " + e.message, applied: aplicado });
+            }
+            if (faltaUsar > 0.005) return res.status(500).json({ error: "Só foi possível usar " + aplicado.toFixed(2).replace(".", ",") + " de crédito.", applied: aplicado });
+
+            try { await sincronizarBloqueioEntregas(invoiceId); } catch (e) { /* melhor esforço */ }
+            return res.status(200).json({ success: true, applied: aplicado, residual: saldoFat });
+        }
+
         // AÇÃO: REGISTRAR PAGAMENTO DA FATURA
         // Se a fatura ainda estiver PROVISÓRIA (rascunho), ela só é lançada aqui, junto com o pagamento.
         // Se qualquer etapa falhar depois de lançar, a fatura volta para Provisória.
+        // O que passar do saldo da fatura vira crédito do cliente (pagamento sem fatura ligada).
         if (action === "register_payment") {
             const { order_id, journal_id, amount, payment_date, invoice_date } = body;
             if (!order_id || !journal_id || !amount) {
@@ -772,35 +899,48 @@ export default async function handler(req, res) {
             }
 
             const invoiceId = Number(order_id);
-            const faturas = await execute("account.move", "read", [[invoiceId]], { fields: ["state"] });
-            if (!faturas || faturas.length === 0) return res.status(404).json({ error: "Fatura não encontrada." });
-
             let lancadaAgora = false;
+            let excedente = 0;
             try {
-                if (faturas[0].state === "draft") {
-                    // garante que a fatura reflete o pedido antes de lançar
-                    const peds = await execute("sale.order", "search_read", [[["invoice_ids", "in", [invoiceId]]]], { fields: ["id"] });
-                    for (const p of (peds || [])) await sincronizarFaturaProvisoriaComPedido(p.id);
-
-                    if (invoice_date) {
-                        await execute("account.move", "write", [[invoiceId], { invoice_date }]);
-                    }
-                    await execute("account.move", "action_post", [[invoiceId]]);
-                    lancadaAgora = true;
-                } else if (faturas[0].state === "cancel") {
-                    return res.status(400).json({ error: "Esta fatura está cancelada." });
+                try {
+                    lancadaAgora = await lancarFaturaSeProvisoria(invoiceId, invoice_date);
+                } catch (e) {
+                    if (e.status) return res.status(e.status).json({ error: e.message });
+                    throw e;
                 }
 
-                const ctx = { active_model: "account.move", active_ids: [invoiceId] };
-                const wizardId = await execute("account.payment.register", "create", [{
-                    journal_id: Number(journal_id),
-                    amount: Number(amount),
-                    payment_date: payment_date || false
-                }], { context: ctx });
+                const c = await clienteDaFatura(invoiceId);
+                const valor = r2c(amount);
+                const residual = c ? Math.max(0, r2c(c.inv.amount_residual)) : valor;
+                const paraFatura = Math.min(valor, residual);
+                excedente = r2c(valor - paraFatura);
 
-                if (!wizardId) throw new Error("Não foi possível gerar o pagamento no Odoo.");
+                if (paraFatura > 0.004) {
+                    const ctx = { active_model: "account.move", active_ids: [invoiceId] };
+                    const wizardId = await execute("account.payment.register", "create", [{
+                        journal_id: Number(journal_id),
+                        amount: paraFatura,
+                        payment_date: payment_date || false
+                    }], { context: ctx });
+                    if (!wizardId) throw new Error("Não foi possível gerar o pagamento no Odoo.");
+                    await execute("account.payment.register", "action_create_payments", [[wizardId]], { context: ctx });
+                }
 
-                await execute("account.payment.register", "action_create_payments", [[wizardId]], { context: ctx });
+                // Passou do saldo: o excedente entra como pagamento do cliente sem fatura (= crédito para compras futuras)
+                if (excedente > 0.004) {
+                    if (!c || !c.payerId) throw new Error("não foi possível identificar o cliente para guardar o crédito.");
+                    const nomeCli = Array.isArray(c.inv.partner_id) ? c.inv.partner_id[1] : "";
+                    const obs = "Crédito adicionado para " + nomeCli;
+                    const dados = await onlyExistingFields("account.payment", {
+                        payment_type: "inbound", partner_type: "customer", partner_id: c.payerId,
+                        amount: excedente, journal_id: Number(journal_id),
+                        memo: obs, ref: obs,
+                        date: payment_date || undefined
+                    });
+                    const pid = await execute("account.payment", "create", [dados]);
+                    await execute("account.payment", "action_post", [[pid]]);
+                    await anotarPagamento(pid, obs);
+                }
             } catch (e) {
                 if (lancadaAgora) {
                     try { await execute("account.move", "button_draft", [[invoiceId]]); } catch (e2) { /* melhor esforço */ }
@@ -810,7 +950,7 @@ export default async function handler(req, res) {
 
             // Fatura paga => tranca a entrega do pedido
             try { await sincronizarBloqueioEntregas(invoiceId); } catch (e) { /* melhor esforço */ }
-            return res.status(200).json({ success: true });
+            return res.status(200).json({ success: true, excess: excedente });
         }
 
         // AÇÃO: CONTAS A RECEBER / A PAGAR (soma do "valor devido" das faturas e contas não canceladas e não pagas)
@@ -1034,6 +1174,33 @@ export default async function handler(req, res) {
                 estavaBloqueado = !!(info && info[0] && info[0].state === "done");
             }
 
+            // Pagamentos e crédito usados nas faturas do pedido voltam para o cliente como crédito
+            let creditoDevolvido = 0;
+            const avisosCredito = [];
+            try {
+                const pedF = await execute("sale.order", "read", [[oid]], { fields: ["invoice_ids"] });
+                const idsF = (pedF && pedF[0] && pedF[0].invoice_ids) || [];
+                if (idsF.length > 0) {
+                    const postadas = await execute("account.move", "search_read", [[["id", "in", idsF], ["state", "=", "posted"]]], { fields: ["id", "name", "amount_total", "amount_residual"] });
+                    for (const f of (postadas || [])) {
+                        const pago = r2c(Number(f.amount_total) - Number(f.amount_residual));
+                        try {
+                            if (pago > 0.004) {
+                                const linhas = await execute("account.move.line", "search_read", [[["move_id", "=", f.id], LINHA_RECEBER_C]], { fields: ["id"] });
+                                await execute("account.move.line", "remove_move_reconcile", [(linhas || []).map(l => l.id)]);
+                                creditoDevolvido = r2c(creditoDevolvido + pago);
+                            }
+                            await execute("account.move", "button_draft", [[f.id]]);
+                            await execute("account.move", "button_cancel", [[f.id]]);
+                        } catch (e) {
+                            avisosCredito.push("Não foi possível desfazer o pagamento da fatura " + f.name + ": " + e.message);
+                        }
+                    }
+                }
+            } catch (e) {
+                avisosCredito.push("Não foi possível devolver o crédito ao cliente: " + e.message);
+            }
+
             if (estavaBloqueado) {
                 await execute("sale.order", "action_unlock", [[oid]]);
             }
@@ -1058,7 +1225,8 @@ export default async function handler(req, res) {
             } catch (e) {
                 warnings.push("Pedido cancelado, mas não foi possível devolver o item ao estoque: " + e.message + " Faça a devolução manualmente no Odoo.");
             }
-            return res.status(200).json({ success: true, devolvidos, warnings });
+            warnings.push(...avisosCredito);
+            return res.status(200).json({ success: true, devolvidos, warnings, credito_devolvido: creditoDevolvido });
         }
 
         // AÇÃO: REABRIR PEDIDO CANCELADO/CONFIRMADO COMO ORÇAMENTO (EDITÁVEL)
@@ -1474,24 +1642,6 @@ export default async function handler(req, res) {
             }
         }
 
-        // ---- Crédito do cliente: pagamentos sem fatura ligada (adiantamentos) ----
-        const r2c = n => Math.round(Number(n) * 100) / 100;
-        const LINHA_RECEBER_C = ["account_id.account_type", "=", "asset_receivable"];
-        const linhasDeCreditoC = async (partnerId) => (await execute("account.move.line", "search_read", [[
-            ["partner_id", "child_of", Number(partnerId)], LINHA_RECEBER_C, ["parent_state", "=", "posted"], ["amount_residual", "<", 0]
-        ]], { fields: ["id", "amount_residual"], order: "date asc, id asc" })) || [];
-        const saldoCredito = async (partnerId) => {
-            const linhas = await linhasDeCreditoC(partnerId);
-            return Math.max(0, r2c(linhas.reduce((t, l) => t - Number(l.amount_residual), 0)));
-        };
-
-        // AÇÃO: SALDO DE CRÉDITO DO CLIENTE
-        if (action === "get_customer_credit") {
-            const { partner_id } = body;
-            if (!partner_id) return res.status(200).json({ credit: 0 });
-            return res.status(200).json({ credit: await saldoCredito(partner_id) });
-        }
-
         // AÇÃO: ADICIONAR / RETIRAR CRÉDITO DO CLIENTE (sem pedido de venda)
         if (action === "save_customer_credit") {
             const { partner_id, partner_name, operation, amount, journal_id, date } = body;
@@ -1550,22 +1700,7 @@ export default async function handler(req, res) {
                 paymentId = await execute("account.payment", "create", [dados]);
                 await execute("account.payment", "action_post", [[paymentId]]);
 
-                // Escreve a observação no campo "Referência" do lançamento no diário e no campo "Anotação" do pagamento
-                // (os nomes técnicos mudam entre versões do Odoo, então procura pelo rótulo e tenta cada campo com segurança)
-                try {
-                    const pgInfo = await execute("account.payment", "read", [[paymentId]], { fields: ["move_id"] });
-                    const mvId = pgInfo && pgInfo[0] && Array.isArray(pgInfo[0].move_id) ? pgInfo[0].move_id[0] : null;
-                    if (mvId) { try { await execute("account.move", "write", [[mvId], { ref: observacao }]); } catch (e) { /* melhor esforço */ } }
-                    const defs = await cached("fields_text_account.payment", TTL_LONG, () => execute("account.payment", "fields_get", [], { attributes: ["string", "type", "readonly"] }));
-                    const candidatos = Object.keys(defs || {}).filter(k => {
-                        const d = defs[k];
-                        if (!d || !["char", "text"].includes(d.type)) return false;
-                        return k === "memo" || k === "ref" || /^(anota[cç][aã]o|memo)$/i.test(String(d.string || "").trim());
-                    });
-                    for (const campo of candidatos) {
-                        try { await execute("account.payment", "write", [[paymentId], { [campo]: observacao }]); } catch (e) { /* campo calculado/somente leitura */ }
-                    }
-                } catch (e) { /* a observação é complementar: não impede o lançamento */ }
+                await anotarPagamento(paymentId, observacao);
 
                 if (operation === "remove") {
                     // a saída (débito do cliente) é abatida contra os créditos em aberto
