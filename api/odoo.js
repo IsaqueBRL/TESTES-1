@@ -1026,7 +1026,8 @@ export default async function handler(req, res) {
             return res.status(200).json({ result: formattedAccounts });
         }
 
-        // AÇÃO: EXTRATO (LANÇAMENTOS DE DIÁRIO) SOMENTE DAS CONTAS "BANCO E CAIXA"
+        // AÇÃO: EXTRATO = ITENS DE DIÁRIO (account.move.line) LANÇADOS, SOMENTE DAS CONTAS "BANCO E CAIXA"
+        // Mesma base do saldo atual das contas (itens lançados), então o extrato fecha com o saldo.
         // Filtros opcionais: date_from / date_to (AAAA-MM-DD), partner (texto), account_id
         if (action === "get_account_statement") {
             const accounts = await getCashBankAccounts();
@@ -1034,42 +1035,41 @@ export default async function handler(req, res) {
             const accountsOut = accounts.map(a => ({ id: a.id, code: a.code, name: a.name }));
             if (accountIds.length === 0) return res.status(200).json({ result: [], accounts: [], limit: 200 });
 
+            // nome da conta SEM o código (ex.: "ITAÚ - ISAQUE")
+            const nameById = {};
+            accounts.forEach(a => { nameById[a.id] = a.name; });
+
             const LIMIT = 200;
             const chosen = Number(body.account_id);
             const scopeIds = chosen && accountIds.includes(chosen) ? [chosen] : accountIds;
 
             const domain = [
-                ["state", "=", "posted"],
-                ["line_ids.account_id", "in", scopeIds]
+                ["account_id", "in", scopeIds],
+                ["parent_state", "=", "posted"]   // somente itens "Lançado"
             ];
-
-            // Só diários de banco/caixa (+ o diário "Transferências" usado nas transferências entre contas);
-            // lançamentos de "Operações diversas" (saldo inicial etc.) ficam de fora
-            const trfJournal = await getTransferJournal().catch(() => null);
-            if (trfJournal) {
-                domain.push("|", ["journal_id.type", "in", ["bank", "cash"]], ["journal_id", "=", trfJournal.id]);
-            } else {
-                domain.push(["journal_id.type", "in", ["bank", "cash"]]);
-            }
-
             if (body.date_from) domain.push(["date", ">=", body.date_from]);
             if (body.date_to) domain.push(["date", "<=", body.date_to]);
             if (body.partner) domain.push(["partner_id.name", "ilike", String(body.partner)]);
 
-            const moves = await execute("account.move", "search_read", [domain], {
-                fields: ["id", "date", "name", "partner_id", "journal_id", "amount_total"],
+            const lines = await execute("account.move.line", "search_read", [domain], {
+                fields: ["id", "date", "partner_id", "account_id", "ref", "debit", "credit"],
                 order: "date desc, id desc",
                 limit: LIMIT
             });
 
-            const result = (moves || []).map(m => ({
-                id: m.id,
-                date: m.date || "",
-                number: m.name || "",
-                partner: Array.isArray(m.partner_id) ? m.partner_id[1] : "",
-                journal: Array.isArray(m.journal_id) ? m.journal_id[1] : "",
-                total: m.amount_total || 0
-            }));
+            const result = (lines || []).map(l => {
+                const accId = Array.isArray(l.account_id) ? l.account_id[0] : null;
+                const accLabel = Array.isArray(l.account_id) ? l.account_id[1] : "";
+                return {
+                    id: l.id,
+                    date: l.date || "",
+                    partner: Array.isArray(l.partner_id) ? l.partner_id[1] : "",
+                    account: nameById[accId] || String(accLabel).replace(/^[\d.]+\s+/, ""),
+                    reference: l.ref || "",
+                    debit: l.debit || 0,    // entrada (verde)
+                    credit: l.credit || 0   // saída (vermelho)
+                };
+            });
             return res.status(200).json({ result, accounts: accountsOut, limit: LIMIT });
         }
 
